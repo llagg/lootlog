@@ -26,6 +26,9 @@ public sealed class AppSettings
     public string Language { get; set; } = string.Empty;
     public string AdapterId { get; set; } = string.Empty;
     public string LogDirectory { get; set; } = string.Empty;
+
+    /// <summary>Ссылка-вебхук канала Discord для отправки журнала.</summary>
+    public string DiscordWebhookUrl { get; set; } = string.Empty;
     public bool OnlyParty { get; set; }
     public bool ShowPlayerLoot { get; set; } = true;
     public bool ShowMobLoot { get; set; } = true;

@@ -46,6 +46,22 @@ public static class LootCsv
             string.Empty, k.Cluster, k.DiedAlliance, k.KilledByAlliance, string.Empty);
     }
 
+    /// <summary>Журнал в виде байтов (UTF-8 с BOM, чтобы Excel правильно открыл кириллицу).</summary>
+    public static byte[] ToBytes(IEnumerable<LootEntry> entries)
+    {
+        using var memory = new MemoryStream();
+        using (var writer = new StreamWriter(memory, new UTF8Encoding(true), 65536, leaveOpen: true))
+        {
+            writer.WriteLine(Header);
+            foreach (var entry in entries)
+            {
+                writer.WriteLine(Format(entry));
+            }
+        }
+
+        return memory.ToArray();
+    }
+
     public static void Write(string path, IEnumerable<LootEntry> entries)
     {
         using var writer = new StreamWriter(path, false, new UTF8Encoding(true));

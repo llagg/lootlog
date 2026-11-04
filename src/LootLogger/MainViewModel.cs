@@ -76,6 +76,7 @@ public sealed class MainViewModel : ObservableObject
         OpenNpcapSiteCommand = new RelayCommand(() => OpenUrl("https://npcap.com/#download"));
         BrowseLogFolderCommand = new RelayCommand(BrowseLogFolder);
         CopyDiagnosticsCommand = new RelayCommand(CopyDiagnostics);
+        SendToDiscordCommand = new RelayCommand(() => _ = SendToDiscordAsync(), () => !_isSendingToDiscord);
     }
 
     #region Язык
@@ -113,6 +114,7 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ComparisonSummary));
         OnPropertyChanged(nameof(SelectedPlayerTitle));
         OnPropertyChanged(nameof(SelectedLanguage));
+        OnPropertyChanged(nameof(DiscordStatus));
 
         // строки таблиц пересоздаются — названия предметов и статусы берутся на новом языке
         EntriesView.Refresh();
@@ -127,6 +129,7 @@ public sealed class MainViewModel : ObservableObject
     #region Статистика игроков
 
     public const int StatsTabIndex = 1;
+    public const int SettingsTabIndex = 3;
 
     public StatsViewModel Stats { get; } = new();
 
@@ -713,6 +716,79 @@ public sealed class MainViewModel : ObservableObject
 
     #endregion
 
+    #region Discord
+
+    public string DiscordWebhookUrl
+    {
+        get => _settings.DiscordWebhookUrl;
+        set
+        {
+            var trimmed = value?.Trim() ?? string.Empty;
+            if (_settings.DiscordWebhookUrl == trimmed)
+            {
+                return;
+            }
+
+            _settings.DiscordWebhookUrl = trimmed;
+            _settings.Save();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DiscordStatus));
+        }
+    }
+
+    public string DiscordStatus => string.IsNullOrWhiteSpace(_settings.DiscordWebhookUrl)
+        ? Loc.T("DiscordNotSet")
+        : DiscordSender.IsValidWebhookUrl(_settings.DiscordWebhookUrl) ? Loc.T("DiscordReady") : Loc.T("DiscordInvalid");
+
+    private bool _isSendingToDiscord;
+
+    private async Task SendToDiscordAsync()
+    {
+        var owner = Application.Current.MainWindow;
+        if (!DiscordSender.IsValidWebhookUrl(_settings.DiscordWebhookUrl))
+        {
+            MessageBox.Show(owner, Loc.T("DiscordSetupFirst"), "Discord", MessageBoxButton.OK, MessageBoxImage.Information);
+            SelectedTab = SettingsTabIndex;
+            return;
+        }
+
+        var visible = Entries.Where(e => IsVisible(e, applySearch: true)).OrderBy(e => e.UtcTime).ToList();
+        if (visible.Count == 0)
+        {
+            MessageBox.Show(owner, Loc.T("DiscordNothing"), "Discord", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        _isSendingToDiscord = true;
+        System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var bytes = LootCsv.ToBytes(visible);
+            var fileName = $"loot_{visible[0].LocalTime:yyyy-MM-dd_HH-mm}.csv";
+            var player = _engine?.Tracker.LocalPlayerName;
+            var message = Loc.F("DiscordMessage", visible.Count, visible.Sum(x => x.TotalValue),
+                visible[0].LocalTime, visible[^1].LocalTime,
+                string.IsNullOrEmpty(player) ? string.Empty : $" · {player}");
+
+            var error = await DiscordSender.SendFileAsync(_settings.DiscordWebhookUrl, fileName, bytes, message);
+            if (error == null)
+            {
+                MessageBox.Show(owner, Loc.F("DiscordSent", visible.Count), "Discord", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show(owner, Loc.F("DiscordFailed", error), "Discord", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        finally
+        {
+            _isSendingToDiscord = false;
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    #endregion
+
     #region Файлы журнала
 
     public string LogDirectory => _settings.EffectiveLogDirectory;
@@ -1179,6 +1255,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenNpcapSiteCommand { get; }
     public RelayCommand BrowseLogFolderCommand { get; }
     public RelayCommand CopyDiagnosticsCommand { get; }
+    public RelayCommand SendToDiscordCommand { get; }
 
     private static void OpenUrl(string url)
     {

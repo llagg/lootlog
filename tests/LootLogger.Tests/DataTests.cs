@@ -207,6 +207,27 @@ public class CsvTests
     }
 
     [Fact]
+    public void ToBytes_MatchesFileFormat()
+    {
+        var entry = new LootEntry { UtcTime = DateTime.UtcNow, LootedBy = "A", LootedFrom = "B", ItemIndex = 1, Quantity = 2, UniqueName = "T4_MAIN_SWORD@1" };
+        var bytes = LootCsv.ToBytes([entry]);
+        Assert.Equal(0xEF, bytes[0]); // BOM для Excel
+
+        var file = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllBytes(file, bytes);
+            var read = LootCsv.Read(file, Items);
+            Assert.True(read.IsValid);
+            Assert.Equal(2, Assert.Single(read.Loot).Quantity);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
     public void NotALootLog_IsRejected()
     {
         var file = Path.GetTempFileName();

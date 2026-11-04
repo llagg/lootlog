@@ -83,6 +83,7 @@
                         <Button Content="{local:Tr ExportCsv}" Command="{Binding ExportCsvCommand}" Margin="0,0,8,6" ToolTip="{local:Tr ExportCsvTip}" />
                         <Button Content="{local:Tr ImportLogs}" Command="{Binding ImportLogCommand}" Margin="0,0,8,6"
                                 ToolTip="{local:Tr ImportLogsTip}" />
+                        <Button Content="{local:Tr SendToDiscord}" Command="{Binding SendToDiscordCommand}" Margin="0,0,8,6" ToolTip="{local:Tr SendToDiscordTip}" Background="#5865F2" />
                         <Button Content="{local:Tr NewSession}" Command="{Binding NewSessionCommand}" Margin="0,0,8,6" />
                         <Button Content="{local:Tr LogFolder}" Command="{Binding OpenLogFolderCommand}" Margin="0,0,8,6" />
                     </WrapPanel>
@@ -337,6 +338,11 @@
                         </DockPanel>
                         <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,20"
                                    Text="{local:Tr AutosaveHint}" />
+
+                        <TextBlock Text="{local:Tr DiscordTitle}" Style="{StaticResource SectionTitle}" />
+                        <TextBox Text="{Binding DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged, Delay=500}" Margin="0,0,0,4" />
+                        <TextBlock Text="{Binding DiscordStatus}" Margin="0,0,0,4" />
+                        <TextBlock Text="{local:Tr DiscordHint}" Style="{StaticResource Hint}" Margin="0,0,0,20" />
 
                         <TextBlock Text="{local:Tr IconsTitle}" Style="{StaticResource SectionTitle}" />
                         <TextBlock Text="{Binding IconsStatus}" Style="{StaticResource Hint}" Margin="0,0,0,20" />
