@@ -350,6 +350,130 @@ public class ComparatorTests
     }
 }
 
+public class ComparatorImprovementTests
+{
+    private static readonly ItemDb Items = new(
+    [
+        new ItemInfo(1, "T6_MAIN_SWORD@1", "Меч", "Sword"),
+        new ItemInfo(2, "T6_BAG", "Сумка", "Bag"),
+        new ItemInfo(3, "T5_POTION_HEAL", "Зелье", "Potion")
+    ]);
+
+    private static DateTime T(int minute) => new(2026, 11, 4, 18, minute, 0, DateTimeKind.Utc);
+
+    private static LootEntry Loot(int minute, string by, string from, int item, int qty, long unit = 100) => new()
+    {
+        UtcTime = T(minute), LootedBy = by, LootedFrom = from, ItemIndex = item, Quantity = qty, UnitValue = unit,
+        IsFromMob = from == LootTracker.MobName
+    };
+
+    private static ChestLogEntry Deposit(int minute, string player, int item, int qty) => new()
+    {
+        UtcTime = T(minute), Player = player, ItemName = Items.DisplayName(item), Quantity = qty, Item = Items.Get(item)
+    };
+
+    private static KillEntry Death(int minute, string died) => new() { UtcTime = T(minute), Died = died, KilledBy = "Enemy" };
+
+    private static int Qty(PlayerComparison p, LootStatus status) => p.Items.Where(x => x.Status == status).Sum(x => x.Quantity);
+
+    [Fact]
+    public void OneLootFromBody_ClosesExactlyOneItem()
+    {
+        var loot = new[]
+        {
+            Loot(0, "Vasya", "Victim", 1, 1),
+            Loot(1, "Vasya", "Victim", 1, 1),
+            Loot(5, "Kolya", "Vasya", 1, 1)
+        };
+
+        var vasya = LootComparator.Compare(loot, []).Single(x => x.Player == "Vasya");
+
+        Assert.Equal(1, Qty(vasya, LootStatus.Lost));
+        Assert.Equal(1, Qty(vasya, LootStatus.NotDeposited));
+    }
+
+    [Fact]
+    public void Stacks_AreMatchedByTotalQuantity()
+    {
+        var loot = new[]
+        {
+            Loot(0, "Vasya", LootTracker.MobName, 3, 3, unit: 10),
+            Loot(1, "Vasya", LootTracker.MobName, 3, 2, unit: 10)
+        };
+
+        var all = LootComparator.Compare(loot, [Deposit(10, "Vasya", 3, 5)]).Single();
+        Assert.Equal(5, Qty(all, LootStatus.Deposited));
+        Assert.Equal(0, Qty(all, LootStatus.NotDeposited));
+        Assert.Equal(0, all.ExtraDepositCount);
+
+        var partial = LootComparator.Compare(loot, [Deposit(10, "Vasya", 3, 4)]).Single();
+        Assert.Equal(4, Qty(partial, LootStatus.Deposited));
+        Assert.Equal(1, Qty(partial, LootStatus.NotDeposited));
+        Assert.Equal(10, partial.NotDepositedValue);
+
+        var tooMuch = LootComparator.Compare(loot, [Deposit(10, "Vasya", 3, 7)]).Single();
+        Assert.Equal(5, Qty(tooMuch, LootStatus.Deposited));
+        Assert.Equal(2, Qty(tooMuch, LootStatus.DepositedWithoutLoot));
+    }
+
+    [Fact]
+    public void Death_WithoutBodyLoot_IsNotCountedAsMissing()
+    {
+        var loot = new[]
+        {
+            Loot(0, "Vasya", "Victim", 2, 1, unit: 5000),
+            Loot(0, "Vasya", "Victim", 1, 1, unit: 7000),
+            Loot(6, "Kolya", "Vasya", 1, 1, unit: 7000)
+        };
+
+        var vasya = LootComparator.Compare(loot, [], [Death(5, "Vasya")]).Single(x => x.Player == "Vasya");
+
+        Assert.Equal(LootStatus.DiedWithLoot, vasya.Items.Single(x => x.Loot!.ItemIndex == 2).Status);
+        Assert.Equal(LootStatus.Lost, vasya.Items.Single(x => x.Loot!.ItemIndex == 1).Status);
+        Assert.Equal(0, vasya.NotDepositedValue);
+        Assert.Equal(1, vasya.DiedWithLootCount);
+    }
+
+    [Fact]
+    public void Death_ThenDeposit_StillCountsAsDeposited()
+    {
+        // в зонах без полного лута вещи после смерти остаются у игрока
+        var loot = new[] { Loot(0, "Vasya", "Victim", 2, 1) };
+        var vasya = LootComparator.Compare(loot, [Deposit(20, "Vasya", 2, 1)], [Death(5, "Vasya")]).Single();
+        Assert.Equal(LootStatus.Deposited, Assert.Single(vasya.Items).Status);
+    }
+
+    [Fact]
+    public void LootAfterRespawn_IsNotMarkedAsDied()
+    {
+        var loot = new[]
+        {
+            Loot(0, "Vasya", "Victim", 2, 1),
+            Loot(10, "Vasya", "Victim", 2, 1)
+        };
+
+        var vasya = LootComparator.Compare(loot, [], [Death(5, "Vasya")]).Single();
+        Assert.Equal(1, Qty(vasya, LootStatus.DiedWithLoot));
+        Assert.Equal(1, Qty(vasya, LootStatus.NotDeposited));
+    }
+
+    [Fact]
+    public void BodyLoot_TakesDiedItemsFirst()
+    {
+        // до смерти один меч, после воскрешения ещё один; с тела забрали один — это тот, с которым он погиб
+        var loot = new[]
+        {
+            Loot(0, "Vasya", "Victim", 1, 1),
+            Loot(10, "Vasya", "Victim", 1, 1),
+            Loot(11, "Kolya", "Vasya", 1, 1)
+        };
+
+        var vasya = LootComparator.Compare(loot, [], [Death(5, "Vasya")]).Single(x => x.Player == "Vasya");
+        Assert.Equal(T(0), vasya.Items.Single(x => x.Status == LootStatus.Lost).LootUtc);
+        Assert.Equal(T(10), vasya.Items.Single(x => x.Status == LootStatus.NotDeposited).LootUtc);
+    }
+}
+
 public class FrameTests
 {
     private static byte[] Ipv4Udp(ushort srcPort, ushort dstPort, byte[] payload, ushort id = 1, int fragmentOffset = 0, bool more = false, int? udpLengthOverride = null)

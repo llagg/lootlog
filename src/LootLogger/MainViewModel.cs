@@ -719,6 +719,19 @@ public sealed class MainViewModel : ObservableObject
                     continue;
                 }
 
+                // смерти из чужих журналов нужны сверке (кто погиб с лутом)
+                lock (_kills)
+                {
+                    foreach (var kill in result.Kills)
+                    {
+                        if (!_kills.Any(k => string.Equals(k.Died, kill.Died, StringComparison.OrdinalIgnoreCase)
+                                             && Math.Abs((k.UtcTime - kill.UtcTime).TotalSeconds) <= 10))
+                        {
+                            _kills.Add(kill);
+                        }
+                    }
+                }
+
                 foreach (var entry in result.Loot.OrderBy(x => x.UtcTime))
                 {
                     var key = DuplicateKey(entry);
@@ -978,11 +991,16 @@ public sealed class MainViewModel : ObservableObject
             var text = ChestLogText;
             var utc = ChestTimesUtc;
             var items = _game.Items;
+            List<KillEntry> kills;
+            lock (_kills)
+            {
+                kills = _kills.ToList();
+            }
 
             var (parse, results) = await Task.Run(() =>
             {
                 var parsed = ChestLogParser.Parse(text, items, utc);
-                return (parsed, LootComparator.Compare(loot, parsed.Entries));
+                return (parsed, LootComparator.Compare(loot, parsed.Entries, kills));
             });
 
             ComparisonResults.Clear();

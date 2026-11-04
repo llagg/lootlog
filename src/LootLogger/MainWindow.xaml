@@ -19,6 +19,9 @@
                 <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.Deposited}">
                     <Setter Property="Background" Value="#1C3326" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DiedWithLoot}">
+                    <Setter Property="Background" Value="#2E2540" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.Lost}">
                     <Setter Property="Background" Value="#3A3220" />
                 </DataTrigger>
@@ -154,6 +157,7 @@
                                 <DataGridTextColumn Header="{local:Tr ColDeposited}" Width="60" Binding="{Binding DepositedCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColNotDeposited}" Width="70" Binding="{Binding NotDepositedCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColLost}" Width="70" Binding="{Binding LostCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColDied}" Width="95" Binding="{Binding DiedWithLootCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColExtra}" Width="80" Binding="{Binding ExtraDepositCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColPercent}" Width="70" Binding="{Binding DepositedPercent, StringFormat=N0}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColNotDepositedValue}" Width="110" Binding="{Binding NotDepositedValue, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />

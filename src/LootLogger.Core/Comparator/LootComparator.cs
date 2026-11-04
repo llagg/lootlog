@@ -2,16 +2,20 @@ using LootLogger.Core.Loot;
 
 namespace LootLogger.Core.Comparator;
 
+/// <summary>Порядок значений задаёт порядок строк в таблице сверки: сначала проблемные.</summary>
 public enum LootStatus
 {
     /// <summary>Залутал и не положил в сундук.</summary>
     NotDeposited,
 
+    /// <summary>Залутал, потом погиб, и никто (в зоне видимости) не залутал это с его тела. Возможно, уничтожено при смерти.</summary>
+    DiedWithLoot,
+
+    /// <summary>Залутал, но потом этот предмет залутали с него самого.</summary>
+    Lost,
+
     /// <summary>Залутал и положил в сундук.</summary>
     Deposited,
-
-    /// <summary>Залутал, но потом этот предмет залутали с него самого (умер).</summary>
-    Lost,
 
     /// <summary>Положил в сундук, но в журнале лута такого нет (своё или лут не попал в журнал).</summary>
     DepositedWithoutLoot,
@@ -20,20 +24,23 @@ public enum LootStatus
     BeforeLog
 }
 
+/// <summary>
+/// Строка сверки. Одна запись лута может распасться на несколько строк:
+/// например, из стопки в 5 зелий 3 сдано, а 2 нет.
+/// </summary>
 public sealed class ComparisonItem
 {
     public required string Player { get; init; }
     public LootEntry? Loot { get; init; }
-    public ChestLogEntry? Deposit { get; set; }
-    public LootStatus Status { get; set; }
+    public ChestLogEntry? Deposit { get; init; }
+    public LootStatus Status { get; init; }
+    public required int Quantity { get; init; }
 
     public DateTime? LootUtc => Loot?.UtcTime;
     public DateTime? DepositUtc => Deposit?.UtcTime;
     public string ItemName => Loot?.DisplayItemName ?? Deposit?.Item?.DisplayName ?? Deposit?.ItemName ?? string.Empty;
-    public int Quantity => Loot?.Quantity ?? Deposit?.Quantity ?? 0;
-    public long Value => Loot?.TotalValue ?? 0;
+    public long Value => (Loot?.UnitValue ?? 0) * Quantity;
     public string LootedFrom => Loot?.LootedFrom ?? string.Empty;
-
 }
 
 public sealed class PlayerComparison
@@ -42,20 +49,25 @@ public sealed class PlayerComparison
     public string Guild { get; set; } = string.Empty;
     public List<ComparisonItem> Items { get; } = new();
 
-    public int LootedCount => Items.Count(x => x.Loot != null);
-    public int DepositedCount => Items.Count(x => x.Status == LootStatus.Deposited);
-    public int NotDepositedCount => Items.Count(x => x.Status == LootStatus.NotDeposited);
-    public int LostCount => Items.Count(x => x.Status == LootStatus.Lost);
-    public int ExtraDepositCount => Items.Count(x => x.Status == LootStatus.DepositedWithoutLoot);
+    /// <summary>Сколько записей лута (не штук) у игрока.</summary>
+    public int LootedCount => Items.Where(x => x.Loot != null).Select(x => x.Loot).Distinct().Count();
+    public int DepositedCount => Count(LootStatus.Deposited);
+    public int NotDepositedCount => Count(LootStatus.NotDeposited);
+    public int LostCount => Count(LootStatus.Lost);
+    public int DiedWithLootCount => Count(LootStatus.DiedWithLoot);
+    public int ExtraDepositCount => Count(LootStatus.DepositedWithoutLoot);
     public long LootedValue => Items.Where(x => x.Loot != null).Sum(x => x.Value);
     public long NotDepositedValue => Items.Where(x => x.Status == LootStatus.NotDeposited).Sum(x => x.Value);
 
-    /// <summary>Доля сданного (по стоимости, если она известна, иначе по количеству записей).</summary>
+    /// <summary>
+    /// Доля сданного по стоимости (или по количеству строк, если стоимость неизвестна).
+    /// Потерянное и то, с чем игрок погиб, не учитывается — это не его вина.
+    /// </summary>
     public double DepositedPercent
     {
         get
         {
-            var counted = Items.Where(x => x.Loot != null && x.Status != LootStatus.Lost).ToList();
+            var counted = Items.Where(x => x.Loot != null && x.Status is LootStatus.Deposited or LootStatus.NotDeposited).ToList();
             if (counted.Count == 0)
             {
                 return 100;
@@ -70,17 +82,33 @@ public sealed class PlayerComparison
             return 100.0 * counted.Count(x => x.Status == LootStatus.Deposited) / counted.Count;
         }
     }
+
+    private int Count(LootStatus status) => Items.Count(x => x.Status == status);
 }
 
 /// <summary>
-/// Сверка журнала лута с логом сундука. Каждую сдачу сопоставляем с самым свежим
-/// подходящим лутом того же игрока (тот же предмет и количество, лут раньше сдачи).
+/// Сверка журнала лута с логом сундука.
+///
+/// Восстанавливаем события по времени и для каждого игрока ведём «что у него на руках из залутанного»:
+/// <list type="bullet">
+/// <item>лут добавляет предметы лутающему и забирает их у того, с кого залутали (это «Потеряно»);</item>
+/// <item>смерть помечает всё, что у игрока на руках, как «при смерти»;</item>
+/// <item>сдача в сундук забирает предметы с рук (сначала самые свежие).</item>
+/// </list>
+/// Всё считается поштучно, поэтому стопки сверяются по сумме, а одна запись лута с тела
+/// закрывает ровно столько штук, сколько с него забрали.
 /// </summary>
 public static class LootComparator
 {
-    public static List<PlayerComparison> Compare(IReadOnlyCollection<LootEntry> loot, IReadOnlyCollection<ChestLogEntry> deposits)
+    public static List<PlayerComparison> Compare(
+        IReadOnlyCollection<LootEntry> loot,
+        IReadOnlyCollection<ChestLogEntry> deposits,
+        IReadOnlyCollection<KillEntry>? kills = null)
     {
         var players = new Dictionary<string, PlayerComparison>(StringComparer.OrdinalIgnoreCase);
+        var holdings = new Dictionary<(string Player, int Item), List<Lot>>();
+        var lots = new List<Lot>();
+        var extras = new List<ComparisonItem>();
 
         PlayerComparison GetPlayer(string name)
         {
@@ -93,50 +121,128 @@ public static class LootComparator
             return player;
         }
 
-        var lootItems = new List<ComparisonItem>(loot.Count);
-        foreach (var entry in loot.Where(x => !string.IsNullOrWhiteSpace(x.LootedBy)))
+        List<Lot> Holding(string player, int item)
         {
-            var item = new ComparisonItem { Player = entry.LootedBy, Loot = entry, Status = LootStatus.NotDeposited };
-            var player = GetPlayer(entry.LootedBy);
-            if (string.IsNullOrEmpty(player.Guild))
+            var key = (player.ToLowerInvariant(), item);
+            if (!holdings.TryGetValue(key, out var list))
             {
-                player.Guild = entry.LootedByGuild;
+                list = new List<Lot>();
+                holdings[key] = list;
             }
 
-            player.Items.Add(item);
-            lootItems.Add(item);
+            return list;
         }
 
-        var candidates = lootItems
-            .Where(x => x.Loot!.ItemIndex > 0)
-            .GroupBy(x => (Player: x.Player.ToLowerInvariant(), x.Loot!.ItemIndex, x.Loot.Quantity))
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Loot!.UtcTime).ToList());
+        var validLoot = loot.Where(x => !string.IsNullOrWhiteSpace(x.LootedBy) && x.Quantity > 0).ToList();
+        var firstLootUtc = validLoot.Count > 0 ? validLoot.Min(x => x.UtcTime) : DateTime.MaxValue;
 
-        var firstLootUtc = lootItems.Count > 0 ? lootItems.Min(x => x.Loot!.UtcTime) : DateTime.MaxValue;
+        // Все события в одну ленту. При равном времени: лут → смерть → сдача.
+        var events = new List<(DateTime Utc, int Order, object Event)>();
+        events.AddRange(validLoot.Select(x => (x.UtcTime, 0, (object) x)));
+        events.AddRange((kills ?? Array.Empty<KillEntry>()).Where(x => !string.IsNullOrWhiteSpace(x.Died)).Select(x => (x.UtcTime, 1, (object) x)));
+        events.AddRange(deposits.Where(x => x.Quantity > 0 && !string.IsNullOrWhiteSpace(x.Player)).Select(x => (x.UtcTime, 2, (object) x)));
 
-        foreach (var deposit in deposits.Where(x => x.Quantity > 0 && !string.IsNullOrWhiteSpace(x.Player)).OrderBy(x => x.UtcTime))
+        foreach (var (_, _, item) in events.OrderBy(x => x.Utc).ThenBy(x => x.Order))
         {
-            if (deposit.Item != null
-                && candidates.TryGetValue((deposit.Player.ToLowerInvariant(), deposit.Item.Index, deposit.Quantity), out var list))
+            switch (item)
             {
-                var match = list.FirstOrDefault(x => x.Deposit == null && x.Loot!.UtcTime < deposit.UtcTime);
-                if (match != null)
+                case LootEntry entry:
                 {
-                    match.Deposit = deposit;
-                    match.Status = LootStatus.Deposited;
-                    continue;
+                    // С тела игрока забрали предмет — у него этих штук больше нет.
+                    if (!entry.IsFromMob && entry.ItemIndex > 0)
+                    {
+                        Take(Holding(entry.LootedFrom, entry.ItemIndex), entry.Quantity, preferDied: true, (lot, n) => lot.Lost += n);
+                    }
+
+                    var lot = new Lot(entry);
+                    lots.Add(lot);
+                    if (entry.ItemIndex > 0)
+                    {
+                        Holding(entry.LootedBy, entry.ItemIndex).Add(lot);
+                    }
+
+                    var player = GetPlayer(entry.LootedBy);
+                    if (string.IsNullOrEmpty(player.Guild))
+                    {
+                        player.Guild = entry.LootedByGuild;
+                    }
+
+                    break;
+                }
+
+                case KillEntry kill:
+                {
+                    var died = kill.Died.ToLowerInvariant();
+                    foreach (var (key, list) in holdings)
+                    {
+                        if (key.Player != died)
+                        {
+                            continue;
+                        }
+
+                        foreach (var lot in list.Where(x => x.Remaining > 0))
+                        {
+                            lot.Died = true;
+                        }
+                    }
+
+                    break;
+                }
+
+                case ChestLogEntry deposit:
+                {
+                    var missing = deposit.Quantity;
+                    if (deposit.Item != null)
+                    {
+                        missing = Take(Holding(deposit.Player, deposit.Item.Index), deposit.Quantity, preferDied: false,
+                            (lot, n) => lot.Deposits.Add((deposit, n)));
+                    }
+
+                    if (missing > 0)
+                    {
+                        extras.Add(new ComparisonItem
+                        {
+                            Player = deposit.Player,
+                            Deposit = deposit,
+                            Quantity = missing,
+                            Status = deposit.UtcTime < firstLootUtc ? LootStatus.BeforeLog : LootStatus.DepositedWithoutLoot
+                        });
+                    }
+
+                    break;
                 }
             }
-
-            GetPlayer(deposit.Player).Items.Add(new ComparisonItem
-            {
-                Player = deposit.Player,
-                Deposit = deposit,
-                Status = deposit.UtcTime < firstLootUtc ? LootStatus.BeforeLog : LootStatus.DepositedWithoutLoot
-            });
         }
 
-        MarkLost(lootItems);
+        foreach (var lot in lots)
+        {
+            var player = GetPlayer(lot.Entry.LootedBy);
+            foreach (var (deposit, quantity) in lot.Deposits)
+            {
+                player.Items.Add(new ComparisonItem { Player = player.Player, Loot = lot.Entry, Deposit = deposit, Quantity = quantity, Status = LootStatus.Deposited });
+            }
+
+            if (lot.Lost > 0)
+            {
+                player.Items.Add(new ComparisonItem { Player = player.Player, Loot = lot.Entry, Quantity = lot.Lost, Status = LootStatus.Lost });
+            }
+
+            if (lot.Remaining > 0)
+            {
+                player.Items.Add(new ComparisonItem
+                {
+                    Player = player.Player,
+                    Loot = lot.Entry,
+                    Quantity = lot.Remaining,
+                    Status = lot.Died ? LootStatus.DiedWithLoot : LootStatus.NotDeposited
+                });
+            }
+        }
+
+        foreach (var extra in extras)
+        {
+            GetPlayer(extra.Player).Items.Add(extra);
+        }
 
         return players.Values
             .OrderByDescending(x => x.NotDepositedValue)
@@ -146,23 +252,42 @@ public static class LootComparator
     }
 
     /// <summary>
-    /// Если игрок залутал предмет, а позже кто-то залутал тот же предмет (и количество) с него —
-    /// значит, он умер с этим лутом. Такое не считаем «не сдано».
+    /// Забирает штуки с рук игрока: сначала самые свежие партии
+    /// (а при луте с тела — сначала то, с чем он погиб). Возвращает, сколько штук не нашлось.
     /// </summary>
-    private static void MarkLost(List<ComparisonItem> lootItems)
+    private static int Take(List<Lot> lots, int quantity, bool preferDied, Action<Lot, int> apply)
     {
-        var lootedFromPlayer = lootItems
-            .Where(x => !x.Loot!.IsFromMob && x.Loot.ItemIndex > 0)
-            .GroupBy(x => (Victim: x.Loot!.LootedFrom.ToLowerInvariant(), x.Loot.ItemIndex, x.Loot.Quantity))
-            .ToDictionary(g => g.Key, g => g.Select(x => x.Loot!.UtcTime).ToList());
+        var order = lots
+            .Where(x => x.Remaining > 0)
+            .OrderByDescending(x => preferDied && x.Died)
+            .ThenByDescending(x => x.Entry.UtcTime);
 
-        foreach (var item in lootItems.Where(x => x.Status == LootStatus.NotDeposited))
+        foreach (var lot in order)
         {
-            var key = (item.Player.ToLowerInvariant(), item.Loot!.ItemIndex, item.Loot.Quantity);
-            if (lootedFromPlayer.TryGetValue(key, out var times) && times.Any(t => t > item.Loot.UtcTime))
+            if (quantity <= 0)
             {
-                item.Status = LootStatus.Lost;
+                break;
             }
+
+            var taken = Math.Min(quantity, lot.Remaining);
+            apply(lot, taken);
+            quantity -= taken;
         }
+
+        return quantity;
+    }
+
+    private sealed class Lot
+    {
+        public Lot(LootEntry entry)
+        {
+            Entry = entry;
+        }
+
+        public LootEntry Entry { get; }
+        public List<(ChestLogEntry Deposit, int Quantity)> Deposits { get; } = new();
+        public int Lost { get; set; }
+        public bool Died { get; set; }
+        public int Remaining => Entry.Quantity - Lost - Deposits.Sum(x => x.Quantity);
     }
 }

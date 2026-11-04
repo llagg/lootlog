@@ -111,6 +111,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["StatusNotDeposited"] = ("Не сдано", "Not deposited"),
         ["StatusDeposited"] = ("Сдано", "Deposited"),
         ["StatusLost"] = ("Потеряно (залутали с него)", "Lost (looted from them)"),
+        ["StatusDied"] = ("Погиб с этим лутом (возможно, уничтожено)", "Died with this loot (possibly destroyed)"),
+        ["ColDied"] = ("Погиб с лутом", "Died with"),
         ["StatusExtra"] = ("Сдано, нет в журнале лута", "Deposited, not in loot log"),
         ["StatusBeforeLog"] = ("Сдано до начала журнала", "Deposited before the log started"),
 
@@ -255,6 +257,7 @@ public sealed class LootStatusConverter : IValueConverter
             LootStatus.NotDeposited => "StatusNotDeposited",
             LootStatus.Deposited => "StatusDeposited",
             LootStatus.Lost => "StatusLost",
+            LootStatus.DiedWithLoot => "StatusDied",
             LootStatus.DepositedWithoutLoot => "StatusExtra",
             _ => "StatusBeforeLog"
         });
