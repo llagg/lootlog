@@ -20,6 +20,9 @@ public static class AppPaths
 public sealed class AppSettings
 {
     public string GameDirectory { get; set; } = string.Empty;
+
+    /// <summary>"ru" или "en".</summary>
+    public string Language { get; set; } = string.Empty;
     public string AdapterId { get; set; } = string.Empty;
     public string LogDirectory { get; set; } = string.Empty;
     public bool OnlyParty { get; set; }

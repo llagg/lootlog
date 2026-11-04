@@ -15,21 +15,28 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        var settings = AppSettings.Load();
+
+        // Язык: из настроек, а при первом запуске — по языку Windows.
+        var english = settings.Language switch
+        {
+            "en" => true,
+            "ru" => false,
+            _ => !string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "ru", StringComparison.OrdinalIgnoreCase)
+                 && !string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "uk", StringComparison.OrdinalIgnoreCase)
+                 && !string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "be", StringComparison.OrdinalIgnoreCase)
+                 && !string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "kk", StringComparison.OrdinalIgnoreCase)
+        };
+        settings.Language = english ? "en" : "ru";
+        Loc.Instance.SetLanguage(english);
+
         _singleInstance = new Mutex(true, "AlbionLootLogger.SingleInstance", out var isFirst);
         if (!isFirst)
         {
-            MessageBox.Show("Лутлогер уже запущен.", "Лутлогер", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(Loc.T("AlreadyRunning"), Loc.T("AppTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
-
-        var culture = CultureInfo.GetCultureInfo("ru-RU");
-        Thread.CurrentThread.CurrentCulture = culture;
-        Thread.CurrentThread.CurrentUICulture = culture;
-        CultureInfo.DefaultThreadCurrentCulture = culture;
-        CultureInfo.DefaultThreadCurrentUICulture = culture;
-        FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
-            new FrameworkPropertyMetadata(XmlLanguage.GetLanguage(culture.IetfLanguageTag)));
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += (_, args) => LogError(args.ExceptionObject as Exception);
@@ -39,7 +46,6 @@ public partial class App : Application
             args.SetObserved();
         };
 
-        var settings = AppSettings.Load();
         var window = new MainWindow(settings);
         MainWindow = window;
         window.Show();
@@ -48,8 +54,8 @@ public partial class App : Application
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         LogError(e.Exception);
-        MessageBox.Show($"Произошла ошибка:\n{e.Exception.Message}\n\nПодробности записаны в {AppPaths.ErrorLog}",
-            "Лутлогер", MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageBox.Show(Loc.F("UnhandledError", e.Exception.Message, AppPaths.ErrorLog),
+            Loc.T("AppTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
         e.Handled = true;
     }
 

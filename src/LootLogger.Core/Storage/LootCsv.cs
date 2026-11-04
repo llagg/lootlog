@@ -28,7 +28,7 @@ public static class LootCsv
         return Join(
             e.UtcTime.ToString("O", CultureInfo.InvariantCulture),
             e.LootedByAlliance, e.LootedByGuild, e.LootedBy,
-            e.UniqueName, e.ItemName, e.Quantity.ToString(CultureInfo.InvariantCulture),
+            e.UniqueName, e.DisplayItemName, e.Quantity.ToString(CultureInfo.InvariantCulture),
             e.LootedFromAlliance, e.LootedFromGuild, e.LootedFrom,
             string.Empty, string.Empty, string.Empty, string.Empty,
             e.UnitValue.ToString(CultureInfo.InvariantCulture),
@@ -147,6 +147,7 @@ public static class LootCsv
                 UniqueName = item?.UniqueName ?? values[4],
                 ItemName = item?.DisplayName ?? (string.IsNullOrWhiteSpace(values[5]) ? values[4] : values[5]),
                 ItemIndex = item?.Index ?? 0,
+                Item = item,
                 Quantity = quantity,
                 LootedFromAlliance = values[7],
                 LootedFromGuild = values[8],
@@ -166,7 +167,7 @@ public static class LootCsv
     {
         return name.Trim().ToUpperInvariant() switch
         {
-            "MOB" or "МОБ" => LootTracker.MobName,
+            "MOB" or "МОБ" or "MONSTER" => LootTracker.MobName,
             "СУНДУК" or "CHEST" => LootTracker.ChestName,
             _ => LootTracker.NormalizeSource(name)
         };

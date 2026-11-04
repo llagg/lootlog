@@ -10,8 +10,9 @@ namespace LootLogger.Core.Loot;
 /// </summary>
 public sealed class LootTracker : IGameMessageSink
 {
-    public const string MobName = "Моб";
-    public const string ChestName = "Сундук";
+    /// <summary>Служебные имена источника лута; в интерфейсе подменяются переводом.</summary>
+    public const string MobName = "MOB";
+    public const string ChestName = "CHEST";
 
     private const int MaxDiscoveredItems = 50_000;
     private const int MaxKnownCharacters = 50_000;
@@ -225,6 +226,7 @@ public sealed class LootTracker : IGameMessageSink
             ItemIndex = itemIndex,
             UniqueName = item?.UniqueName ?? string.Empty,
             ItemName = item?.DisplayName ?? $"#{itemIndex}",
+            Item = item,
             Quantity = quantity,
             UnitValue = unitValue,
             Cluster = CurrentCluster,

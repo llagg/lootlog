@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:LootLogger"
         xmlns:comparator="clr-namespace:LootLogger.Core.Comparator;assembly=LootLogger.Core"
-        Title="Albion Лутлогер"
+        Title="{local:Tr AppTitle}"
         Width="1280" Height="760" MinWidth="900" MinHeight="500"
         Background="{StaticResource WindowBackground}"
         Foreground="{StaticResource TextBrush}"
@@ -39,6 +39,11 @@
         <!-- Строка состояния -->
         <Border DockPanel.Dock="Top" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="14,8">
             <StackPanel>
+                <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                    <TextBlock Text="{local:Tr Language}" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Style="{StaticResource DarkCombo}" Width="110" ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" DisplayMemberPath="Name" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center">
                         <Ellipse.Style>
@@ -57,11 +62,12 @@
                     </Ellipse>
                     <TextBlock Text="{Binding CaptureStatus}" FontWeight="SemiBold" />
                 </StackPanel>
+                </DockPanel>
                 <TextBlock Text="{Binding PlayerStatus}" Style="{StaticResource Hint}" Margin="18,3,0,0" />
                 <Border Background="#3B2A10" BorderBrush="{StaticResource WarnBrush}" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,8,0,0"
                         Visibility="{Binding HasWarning, Converter={StaticResource BoolToVisibility}}">
                     <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="Скачать Npcap" Command="{Binding OpenNpcapSiteCommand}" Margin="8,0,0,0"
+                        <Button DockPanel.Dock="Right" Content="{local:Tr DownloadNpcap}" Command="{Binding OpenNpcapSiteCommand}" Margin="8,0,0,0"
                                 Visibility="{Binding IsNpcapMissing, Converter={StaticResource BoolToVisibility}}" Style="{StaticResource AccentButton}" />
                         <TextBlock Text="{Binding Warning}" TextWrapping="Wrap" VerticalAlignment="Center" />
                     </DockPanel>
@@ -71,20 +77,20 @@
 
         <TabControl Margin="10,8,10,10">
             <!-- ЖУРНАЛ -->
-            <TabItem Header="Журнал лута">
+            <TabItem Header="{local:Tr TabJournal}">
                 <DockPanel Margin="0,10,0,0">
                     <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBox Width="260" Margin="0,0,16,6" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="Поиск по игроку, гильдии, предмету или локации" />
-                        <CheckBox Content="Только моя группа" IsChecked="{Binding OnlyParty}" Margin="0,0,16,6"
-                                  ToolTip="Лут, который подобрал кто-то из вашей группы, или лут с тела члена вашей группы" />
-                        <CheckBox Content="Лут с игроков" IsChecked="{Binding ShowPlayerLoot}" Margin="0,0,16,6" />
-                        <CheckBox Content="Лут с мобов и сундуков" IsChecked="{Binding ShowMobLoot}" Margin="0,0,24,6" />
-                        <Button Content="Экспорт CSV…" Command="{Binding ExportCsvCommand}" Margin="0,0,8,6" ToolTip="Сохранить показанные записи в файл" />
-                        <Button Content="Загрузить журналы…" Command="{Binding ImportLogCommand}" Margin="0,0,8,6"
-                                ToolTip="Добавить журналы других лутлогеров (этой программы или Statistics Analysis Tool), например для сверки с сундуком" />
-                        <Button Content="Новая сессия" Command="{Binding NewSessionCommand}" Margin="0,0,8,6" />
-                        <Button Content="Папка с журналами" Command="{Binding OpenLogFolderCommand}" Margin="0,0,8,6" />
+                                 ToolTip="{local:Tr SearchTip}" />
+                        <CheckBox Content="{local:Tr OnlyParty}" IsChecked="{Binding OnlyParty}" Margin="0,0,16,6"
+                                  ToolTip="{local:Tr OnlyPartyTip}" />
+                        <CheckBox Content="{local:Tr PlayerLoot}" IsChecked="{Binding ShowPlayerLoot}" Margin="0,0,16,6" />
+                        <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,24,6" />
+                        <Button Content="{local:Tr ExportCsv}" Command="{Binding ExportCsvCommand}" Margin="0,0,8,6" ToolTip="{local:Tr ExportCsvTip}" />
+                        <Button Content="{local:Tr ImportLogs}" Command="{Binding ImportLogCommand}" Margin="0,0,8,6"
+                                ToolTip="{local:Tr ImportLogsTip}" />
+                        <Button Content="{local:Tr NewSession}" Command="{Binding NewSessionCommand}" Margin="0,0,8,6" />
+                        <Button Content="{local:Tr LogFolder}" Command="{Binding OpenLogFolderCommand}" Margin="0,0,8,6" />
                     </WrapPanel>
 
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
@@ -94,22 +100,22 @@
 
                     <DataGrid ItemsSource="{Binding EntriesView}">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Время" Width="80" Binding="{Binding LocalTime, StringFormat='HH:mm:ss'}" ElementStyle="{StaticResource MutedCell}" />
-                            <DataGridTextColumn Header="Кто залутал" Width="140" Binding="{Binding LootedBy}" />
-                            <DataGridTextColumn Header="Гильдия" Width="130" Binding="{Binding LootedByGuild}" ElementStyle="{StaticResource MutedCell}" />
-                            <DataGridTextColumn Header="Предмет" Width="*" MinWidth="200" Binding="{Binding ItemName}" />
-                            <DataGridTextColumn Header="Кол-во" Width="60" Binding="{Binding Quantity}" ElementStyle="{StaticResource RightCell}" />
-                            <DataGridTextColumn Header="Стоимость" Width="100" Binding="{Binding TotalValue, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
-                            <DataGridTextColumn Header="С кого" Width="140" Binding="{Binding LootedFrom}" />
-                            <DataGridTextColumn Header="Гильдия жертвы" Width="130" Binding="{Binding LootedFromGuild}" ElementStyle="{StaticResource MutedCell}" />
-                            <DataGridTextColumn Header="Локация" Width="150" Binding="{Binding Cluster}" ElementStyle="{StaticResource MutedCell}" />
+                            <DataGridTextColumn Header="{local:Tr ColTime}" Width="80" Binding="{Binding LocalTime, StringFormat='HH:mm:ss'}" ElementStyle="{StaticResource MutedCell}" />
+                            <DataGridTextColumn Header="{local:Tr ColLooter}" Width="140" Binding="{Binding LootedBy}" />
+                            <DataGridTextColumn Header="{local:Tr ColGuild}" Width="130" Binding="{Binding LootedByGuild}" ElementStyle="{StaticResource MutedCell}" />
+                            <DataGridTextColumn Header="{local:Tr ColItem}" Width="*" MinWidth="200" Binding="{Binding DisplayItemName}" />
+                            <DataGridTextColumn Header="{local:Tr ColQty}" Width="60" Binding="{Binding Quantity}" ElementStyle="{StaticResource RightCell}" />
+                            <DataGridTextColumn Header="{local:Tr ColValue}" Width="100" Binding="{Binding TotalValue, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
+                            <DataGridTextColumn Header="{local:Tr ColFrom}" Width="140" Binding="{Binding LootedFrom, Converter={x:Static local:SourceNameConverter.Instance}}" />
+                            <DataGridTextColumn Header="{local:Tr ColVictimGuild}" Width="130" Binding="{Binding LootedFromGuild}" ElementStyle="{StaticResource MutedCell}" />
+                            <DataGridTextColumn Header="{local:Tr ColZone}" Width="150" Binding="{Binding Cluster}" ElementStyle="{StaticResource MutedCell}" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
             </TabItem>
 
             <!-- СВЕРКА -->
-            <TabItem Header="Сверка с сундуком">
+            <TabItem Header="{local:Tr TabCompare}">
                 <Grid Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="380" />
@@ -118,18 +124,18 @@
                     </Grid.ColumnDefinitions>
 
                     <DockPanel Grid.Column="0">
-                        <TextBlock DockPanel.Dock="Top" Text="Лог гильдейского сундука" Style="{StaticResource SectionTitle}" />
+                        <TextBlock DockPanel.Dock="Top" Text="{local:Tr ChestLogTitle}" Style="{StaticResource SectionTitle}" />
                         <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,8"
-                                   Text="В игре откройте сундук → логи, скопируйте их кнопкой копирования и вставьте сюда. Можно добавить несколько логов подряд." />
+                                   Text="{local:Tr ChestLogHint}" />
                         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                            <Button Content="Вставить из буфера" Command="{Binding PasteChestLogCommand}" Margin="0,0,8,6" />
-                            <Button Content="Из файла…" Command="{Binding LoadChestLogCommand}" Margin="0,0,8,6" />
-                            <Button Content="Очистить" Command="{Binding ClearChestLogCommand}" Margin="0,0,8,6" />
+                            <Button Content="{local:Tr Paste}" Command="{Binding PasteChestLogCommand}" Margin="0,0,8,6" />
+                            <Button Content="{local:Tr FromFile}" Command="{Binding LoadChestLogCommand}" Margin="0,0,8,6" />
+                            <Button Content="{local:Tr Clear}" Command="{Binding ClearChestLogCommand}" Margin="0,0,8,6" />
                         </WrapPanel>
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                            <CheckBox Content="Время в логе сундука — UTC (как в игре)" IsChecked="{Binding ChestTimesUtc}" Margin="0,0,0,8"
-                                      ToolTip="Снимите галочку, если время в логе указано по часам вашего компьютера" />
-                            <Button Content="Сравнить" Command="{Binding CompareCommand}" Style="{StaticResource AccentButton}" HorizontalAlignment="Left" Padding="24,8" />
+                            <CheckBox Content="{local:Tr ChestUtc}" IsChecked="{Binding ChestTimesUtc}" Margin="0,0,0,8"
+                                      ToolTip="{local:Tr ChestUtcTip}" />
+                            <Button Content="{local:Tr Compare}" Command="{Binding CompareCommand}" Style="{StaticResource AccentButton}" HorizontalAlignment="Left" Padding="24,8" />
                         </StackPanel>
                         <TextBox Text="{Binding ChestLogText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" AcceptsTab="True"
                                  VerticalContentAlignment="Top" TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
@@ -145,38 +151,38 @@
                         </Grid.RowDefinitions>
 
                         <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                            <Button DockPanel.Dock="Right" Content="Экспорт отчёта…" Command="{Binding ExportComparisonCommand}" Margin="8,0,0,0" VerticalAlignment="Top" />
+                            <Button DockPanel.Dock="Right" Content="{local:Tr ExportReport}" Command="{Binding ExportComparisonCommand}" Margin="8,0,0,0" VerticalAlignment="Top" />
                             <TextBlock Text="{Binding ComparisonSummary}" TextWrapping="Wrap" />
                         </DockPanel>
 
                         <DataGrid Grid.Row="1" ItemsSource="{Binding ComparisonResults}" SelectedItem="{Binding SelectedPlayer}" SelectionMode="Single">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Игрок" Width="*" Binding="{Binding Player}" />
-                                <DataGridTextColumn Header="Гильдия" Width="120" Binding="{Binding Guild}" ElementStyle="{StaticResource MutedCell}" />
-                                <DataGridTextColumn Header="Залутал" Width="70" Binding="{Binding LootedCount}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Сдал" Width="60" Binding="{Binding DepositedCount}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Не сдал" Width="70" Binding="{Binding NotDepositedCount}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Потерял" Width="70" Binding="{Binding LostCount}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Сдал сверх" Width="80" Binding="{Binding ExtraDepositCount}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Сдано, %" Width="70" Binding="{Binding DepositedPercent, StringFormat=N0}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Не сдано на" Width="110" Binding="{Binding NotDepositedValue, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColPlayer}" Width="*" Binding="{Binding Player}" />
+                                <DataGridTextColumn Header="{local:Tr ColGuild}" Width="120" Binding="{Binding Guild}" ElementStyle="{StaticResource MutedCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColLooted}" Width="70" Binding="{Binding LootedCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColDeposited}" Width="60" Binding="{Binding DepositedCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColNotDeposited}" Width="70" Binding="{Binding NotDepositedCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColLost}" Width="70" Binding="{Binding LostCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColExtra}" Width="80" Binding="{Binding ExtraDepositCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColPercent}" Width="70" Binding="{Binding DepositedPercent, StringFormat=N0}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColNotDepositedValue}" Width="110" Binding="{Binding NotDepositedValue, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
                             </DataGrid.Columns>
                         </DataGrid>
 
                         <DockPanel Grid.Row="2" Margin="0,12,0,8">
-                            <CheckBox Content="Показывать только не сданное" IsChecked="{Binding OnlyProblems}" />
-                            <TextBlock Text="{Binding SelectedPlayer.Player, StringFormat='Предметы игрока {0}'}" Style="{StaticResource SectionTitle}" Margin="0" HorizontalAlignment="Right" />
+                            <CheckBox Content="{local:Tr OnlyProblems}" IsChecked="{Binding OnlyProblems}" />
+                            <TextBlock Text="{Binding SelectedPlayerTitle}" Style="{StaticResource SectionTitle}" Margin="0" HorizontalAlignment="Right" />
                         </DockPanel>
 
                         <DataGrid Grid.Row="3" ItemsSource="{Binding SelectedPlayerItems}" RowStyle="{StaticResource StatusRow}" RowBackground="{x:Null}" AlternatingRowBackground="{x:Null}">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Статус" Width="190" Binding="{Binding StatusText}" />
-                                <DataGridTextColumn Header="Предмет" Width="*" MinWidth="180" Binding="{Binding ItemName}" />
-                                <DataGridTextColumn Header="Кол-во" Width="60" Binding="{Binding Quantity}" ElementStyle="{StaticResource RightCell}" />
-                                <DataGridTextColumn Header="Стоимость" Width="100" Binding="{Binding Value, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
-                                <DataGridTextColumn Header="С кого" Width="130" Binding="{Binding LootedFrom}" />
-                                <DataGridTextColumn Header="Залутано" Width="130" Binding="{Binding LootUtc, StringFormat='dd.MM HH:mm:ss', Converter={x:Static local:UtcToLocalConverter.Instance}}" ElementStyle="{StaticResource MutedCell}" />
-                                <DataGridTextColumn Header="Сдано" Width="130" Binding="{Binding DepositUtc, StringFormat='dd.MM HH:mm:ss', Converter={x:Static local:UtcToLocalConverter.Instance}}" ElementStyle="{StaticResource MutedCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColStatus}" Width="200" Binding="{Binding Status, Converter={x:Static local:LootStatusConverter.Instance}}" />
+                                <DataGridTextColumn Header="{local:Tr ColItem}" Width="*" MinWidth="180" Binding="{Binding ItemName}" />
+                                <DataGridTextColumn Header="{local:Tr ColQty}" Width="60" Binding="{Binding Quantity}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColValue}" Width="100" Binding="{Binding Value, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColFrom}" Width="130" Binding="{Binding LootedFrom, Converter={x:Static local:SourceNameConverter.Instance}}" />
+                                <DataGridTextColumn Header="{local:Tr ColLootedAt}" Width="130" Binding="{Binding LootUtc, StringFormat='dd.MM HH:mm:ss', Converter={x:Static local:UtcToLocalConverter.Instance}}" ElementStyle="{StaticResource MutedCell}" />
+                                <DataGridTextColumn Header="{local:Tr ColDepositedAt}" Width="130" Binding="{Binding DepositUtc, StringFormat='dd.MM HH:mm:ss', Converter={x:Static local:UtcToLocalConverter.Instance}}" ElementStyle="{StaticResource MutedCell}" />
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -184,37 +190,37 @@
             </TabItem>
 
             <!-- НАСТРОЙКИ -->
-            <TabItem Header="Настройки">
+            <TabItem Header="{local:Tr TabSettings}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,14,0,0" MaxWidth="820" HorizontalAlignment="Left">
-                        <TextBlock Text="Папка игры" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="{local:Tr GameFolder}" Style="{StaticResource SectionTitle}" />
                         <DockPanel Margin="0,0,0,4">
-                            <Button DockPanel.Dock="Right" Content="Выбрать…" Command="{Binding BrowseGameFolderCommand}" Margin="8,0,0,0" />
+                            <Button DockPanel.Dock="Right" Content="{local:Tr Browse}" Command="{Binding BrowseGameFolderCommand}" Margin="8,0,0,0" />
                             <TextBox Text="{Binding GameDirectory, Mode=OneWay}" IsReadOnly="True" />
                         </DockPanel>
                         <TextBlock Text="{Binding GameDataStatus}" Style="{StaticResource Hint}" Margin="0,0,0,20" />
 
-                        <TextBlock Text="Сетевой адаптер" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="{local:Tr Adapter}" Style="{StaticResource SectionTitle}" />
                         <DockPanel Margin="0,0,0,4">
-                            <Button DockPanel.Dock="Right" Content="Применить" Command="{Binding RestartCaptureCommand}" Style="{StaticResource AccentButton}" Margin="8,0,0,0" />
-                            <Button DockPanel.Dock="Right" Content="Обновить список" Command="{Binding RefreshAdaptersCommand}" Margin="8,0,0,0" />
+                            <Button DockPanel.Dock="Right" Content="{local:Tr Apply}" Command="{Binding RestartCaptureCommand}" Style="{StaticResource AccentButton}" Margin="8,0,0,0" />
+                            <Button DockPanel.Dock="Right" Content="{local:Tr RefreshList}" Command="{Binding RefreshAdaptersCommand}" Margin="8,0,0,0" />
                             <ComboBox Style="{StaticResource DarkCombo}" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" DisplayMemberPath="DisplayName" />
                         </DockPanel>
                         <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,20"
-                                   Text="«Авто» слушает все адаптеры и сам выбирает тот, где идёт трафик игры. С VPN или ExitLag это обычно работает без настройки. Если данные не идут дольше минуты в игре — выберите адаптер VPN/ExitLag вручную и нажмите «Применить»." />
+                                   Text="{local:Tr AdapterHint}" />
 
-                        <TextBlock Text="Автозапись журнала" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="{local:Tr Autosave}" Style="{StaticResource SectionTitle}" />
                         <DockPanel Margin="0,0,0,4">
-                            <Button DockPanel.Dock="Right" Content="Открыть" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0" />
-                            <Button DockPanel.Dock="Right" Content="Выбрать…" Command="{Binding BrowseLogFolderCommand}" Margin="8,0,0,0" />
+                            <Button DockPanel.Dock="Right" Content="{local:Tr Open}" Command="{Binding OpenLogFolderCommand}" Margin="8,0,0,0" />
+                            <Button DockPanel.Dock="Right" Content="{local:Tr Browse}" Command="{Binding BrowseLogFolderCommand}" Margin="8,0,0,0" />
                             <TextBox Text="{Binding LogDirectory, Mode=OneWay}" IsReadOnly="True" />
                         </DockPanel>
                         <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,20"
-                                   Text="Каждая сессия пишется в отдельный CSV-файл сразу по мере лута — даже при вылете программы журнал сохранится. Формат совместим со Statistics Analysis Tool." />
+                                   Text="{local:Tr AutosaveHint}" />
 
-                        <TextBlock Text="Стоимость предметов" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="{local:Tr ValueTitle}" Style="{StaticResource SectionTitle}" />
                         <TextBlock Style="{StaticResource Hint}"
-                                   Text="Стоимость — оценочная рыночная цена, которую сервер игры присылает вместе с данными предмета. Интернет не нужен. Цены запоминаются между запусками, поэтому со временем у большего числа предметов будет известна стоимость." />
+                                   Text="{local:Tr ValueHint}" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -29,20 +29,11 @@ public sealed class ComparisonItem
 
     public DateTime? LootUtc => Loot?.UtcTime;
     public DateTime? DepositUtc => Deposit?.UtcTime;
-    public string ItemName => Loot?.ItemName ?? Deposit?.Item?.DisplayName ?? Deposit?.ItemName ?? string.Empty;
+    public string ItemName => Loot?.DisplayItemName ?? Deposit?.Item?.DisplayName ?? Deposit?.ItemName ?? string.Empty;
     public int Quantity => Loot?.Quantity ?? Deposit?.Quantity ?? 0;
     public long Value => Loot?.TotalValue ?? 0;
     public string LootedFrom => Loot?.LootedFrom ?? string.Empty;
 
-    public string StatusText => Status switch
-    {
-        LootStatus.NotDeposited => "Не сдано",
-        LootStatus.Deposited => "Сдано",
-        LootStatus.Lost => "Потеряно (залутали с него)",
-        LootStatus.DepositedWithoutLoot => "Сдано, нет в журнале лута",
-        LootStatus.BeforeLog => "Сдано до начала журнала",
-        _ => string.Empty
-    };
 }
 
 public sealed class PlayerComparison

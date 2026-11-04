@@ -5,6 +5,13 @@ namespace LootLogger.Core.Capture;
 
 public sealed record CaptureAdapter(string Id, string DisplayName);
 
+public enum CaptureProblem
+{
+    None,
+    NoAdapters,
+    AdapterNotFound
+}
+
 /// <summary>
 /// Захват игрового трафика через Npcap. Работает в отдельном потоке и в ядре отбрасывает всё,
 /// кроме UDP-пакетов игры (BPF-фильтр), поэтому загрузки, стримы и прочий трафик не мешают.
@@ -44,6 +51,7 @@ public sealed class NpcapCapture : IDisposable
     public string ActiveAdapterName { get; private set; } = string.Empty;
     public int OpenedAdapters { get; private set; }
     public string LastError { get; private set; } = string.Empty;
+    public CaptureProblem Problem { get; private set; }
     public long GamePackets;
     public long HandlerErrors;
     public DateTime LastGamePacketUtc { get; private set; } = DateTime.MinValue;
@@ -102,6 +110,7 @@ public sealed class NpcapCapture : IDisposable
 
             _stopRequested = false;
             LastError = string.Empty;
+            Problem = CaptureProblem.None;
             var ready = new ManualResetEventSlim();
             _thread = new Thread(() => Worker(adapterId, ready))
             {
@@ -144,9 +153,7 @@ public sealed class NpcapCapture : IDisposable
             OpenedAdapters = OpenAdapters(dispatcher, adapterId);
             if (OpenedAdapters == 0)
             {
-                LastError = string.IsNullOrEmpty(adapterId)
-                    ? "Не удалось открыть ни один сетевой адаптер."
-                    : "Выбранный адаптер не найден или недоступен. Выберите другой или «Авто».";
+                Problem = string.IsNullOrEmpty(adapterId) ? CaptureProblem.NoAdapters : CaptureProblem.AdapterNotFound;
                 return;
             }
 

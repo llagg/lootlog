@@ -20,8 +20,6 @@ namespace LootLogger;
 
 public sealed class MainViewModel : ObservableObject
 {
-    private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
-
     private readonly AppSettings _settings;
     private readonly ConcurrentQueue<LootEntry> _incomingLoot = new();
     private readonly List<KillEntry> _kills = new();
@@ -54,6 +52,9 @@ public sealed class MainViewModel : ObservableObject
         }, Application.Current.Dispatcher);
         _searchTimer.Stop();
 
+        Loc.Instance.LanguageChanged += OnLanguageChanged;
+        _journalSummary = Loc.T("NoEntries");
+
         ExportCsvCommand = new RelayCommand(ExportCsv);
         ImportLogCommand = new RelayCommand(ImportLog);
         NewSessionCommand = new RelayCommand(NewSession);
@@ -69,6 +70,49 @@ public sealed class MainViewModel : ObservableObject
         OpenNpcapSiteCommand = new RelayCommand(() => OpenUrl("https://npcap.com/#download"));
         BrowseLogFolderCommand = new RelayCommand(BrowseLogFolder);
     }
+
+    #region Язык
+
+    public IReadOnlyList<LanguageOption> Languages { get; } =
+    [
+        new LanguageOption(false, "Русский"),
+        new LanguageOption(true, "English")
+    ];
+
+    public LanguageOption SelectedLanguage
+    {
+        get => Languages.First(x => x.IsEnglish == Loc.Instance.IsEnglish);
+        set
+        {
+            if (value == null || value.IsEnglish == Loc.Instance.IsEnglish)
+            {
+                return;
+            }
+
+            _settings.Language = value.IsEnglish ? "en" : "ru";
+            Loc.Instance.SetLanguage(value.IsEnglish);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>После смены языка перерисовываем всё, что собирается из кода.</summary>
+    private void OnLanguageChanged()
+    {
+        UpdateJournalSummary();
+        UpdateStatus();
+        RefreshAdapters();
+        OnPropertyChanged(nameof(Warning));
+        OnPropertyChanged(nameof(GameDataStatus));
+        OnPropertyChanged(nameof(ComparisonSummary));
+        OnPropertyChanged(nameof(SelectedPlayerTitle));
+        OnPropertyChanged(nameof(SelectedLanguage));
+
+        // строки таблиц пересоздаются — названия предметов и статусы берутся на новом языке
+        EntriesView.Refresh();
+        UpdateSelectedPlayerItems();
+    }
+
+    #endregion
 
     #region Журнал
 
@@ -133,7 +177,7 @@ public sealed class MainViewModel : ObservableObject
 
     private int _shownCount;
     private long _shownValue;
-    private string _journalSummary = "Записей пока нет";
+    private string _journalSummary = string.Empty;
     public string JournalSummary
     {
         get => _journalSummary;
@@ -161,7 +205,7 @@ public sealed class MainViewModel : ObservableObject
         var q = _searchText.Trim();
         return Contains(e.LootedBy, q) || Contains(e.LootedByGuild, q) || Contains(e.LootedByAlliance, q)
                || Contains(e.LootedFrom, q) || Contains(e.LootedFromGuild, q)
-               || Contains(e.ItemName, q) || Contains(e.UniqueName, q) || Contains(e.Cluster, q);
+               || Contains(e.DisplayItemName, q) || Contains(SourceNameConverter.Translate(e.LootedFrom), q) || Contains(e.UniqueName, q) || Contains(e.Cluster, q);
 
         static bool Contains(string value, string q) => value.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
@@ -186,8 +230,8 @@ public sealed class MainViewModel : ObservableObject
     private void UpdateJournalSummary()
     {
         JournalSummary = Entries.Count == 0
-            ? "Записей пока нет"
-            : string.Format(Ru, "Записей: {0:N0} · показано: {1:N0} · стоимость показанного: {2:N0} серебра", Entries.Count, _shownCount, _shownValue);
+            ? Loc.T("NoEntries")
+            : Loc.F("JournalSummary", Entries.Count, _shownCount, _shownValue);
     }
 
     private void AddEntry(LootEntry entry)
@@ -204,7 +248,7 @@ public sealed class MainViewModel : ObservableObject
 
     #region Статус
 
-    private string _captureStatus = "Запуск…";
+    private string _captureStatus = Loc.T("CaptureStarting");
     public string CaptureStatus { get => _captureStatus; private set => Set(ref _captureStatus, value); }
 
     private bool _isCaptureOk;
@@ -213,26 +257,35 @@ public sealed class MainViewModel : ObservableObject
     private bool _isGameDataSeen;
     public bool IsGameDataSeen { get => _isGameDataSeen; private set => Set(ref _isGameDataSeen, value); }
 
-    private string _playerStatus = "Персонаж: войдите в игру или смените локацию";
+    private string _playerStatus = string.Empty;
     public string PlayerStatus { get => _playerStatus; private set => Set(ref _playerStatus, value); }
 
-    private string _gameDataStatus = string.Empty;
-    public string GameDataStatus { get => _gameDataStatus; private set => Set(ref _gameDataStatus, value); }
+    private string _gameDataKey = string.Empty;
+    private object[] _gameDataArgs = [];
 
-    private string _warning = string.Empty;
-    public string Warning
+    public string GameDataStatus => string.IsNullOrEmpty(_gameDataKey) ? string.Empty : Loc.F(_gameDataKey, _gameDataArgs);
+
+    private void SetGameDataStatus(string key, params object[] args)
     {
-        get => _warning;
-        private set
-        {
-            if (Set(ref _warning, value))
-            {
-                OnPropertyChanged(nameof(HasWarning));
-            }
-        }
+        _gameDataKey = key;
+        _gameDataArgs = args;
+        OnPropertyChanged(nameof(GameDataStatus));
     }
 
-    public bool HasWarning => !string.IsNullOrEmpty(_warning);
+    private string _warningKey = string.Empty;
+    private string _warningArg = string.Empty;
+
+    public string Warning => string.IsNullOrEmpty(_warningKey) ? string.Empty : Loc.F(_warningKey, _warningArg);
+
+    public bool HasWarning => !string.IsNullOrEmpty(_warningKey);
+
+    private void SetWarning(string key, string arg = "")
+    {
+        _warningKey = key;
+        _warningArg = arg;
+        OnPropertyChanged(nameof(Warning));
+        OnPropertyChanged(nameof(HasWarning));
+    }
 
     private bool _isNpcapMissing;
     public bool IsNpcapMissing { get => _isNpcapMissing; private set => Set(ref _isNpcapMissing, value); }
@@ -277,35 +330,41 @@ public sealed class MainViewModel : ObservableObject
         if (!capture.IsRunning)
         {
             IsCaptureOk = false;
-            CaptureStatus = string.IsNullOrEmpty(capture.LastError) ? "Захват остановлен" : $"Захват не работает: {capture.LastError}";
+            var problem = capture.Problem switch
+            {
+                CaptureProblem.NoAdapters => Loc.T("NoAdapters"),
+                CaptureProblem.AdapterNotFound => Loc.T("AdapterNotFound"),
+                _ => capture.LastError
+            };
+            CaptureStatus = string.IsNullOrEmpty(problem) ? Loc.T("CaptureStopped") : Loc.F("CaptureFailed", problem);
         }
         else if (IsGameDataSeen)
         {
             IsCaptureOk = true;
-            CaptureStatus = $"Данные игры идут · {capture.ActiveAdapterName} · пакетов: {capture.GamePackets.ToString("N0", Ru)}";
+            CaptureStatus = Loc.F("DataFlowing", capture.ActiveAdapterName, capture.GamePackets);
         }
         else
         {
             IsCaptureOk = true;
             CaptureStatus = capture.GamePackets == 0
-                ? $"Жду трафик игры… (открыто адаптеров: {capture.OpenedAdapters})"
-                : "Трафика игры сейчас нет";
+                ? Loc.F("WaitingTraffic", capture.OpenedAdapters)
+                : Loc.T("NoTrafficNow");
         }
 
         PlayerStatus = string.IsNullOrEmpty(tracker.LocalPlayerName)
-            ? "Персонаж: смените локацию или перезайдите, чтобы программа узнала ваше имя"
-            : $"Персонаж: {tracker.LocalPlayerName}{(string.IsNullOrEmpty(tracker.LocalGuild) ? string.Empty : $" [{tracker.LocalGuild}]")}"
-              + $" · Локация: {(string.IsNullOrEmpty(tracker.CurrentCluster) ? "—" : tracker.CurrentCluster)}"
-              + $" · В группе: {tracker.PartySize}";
+            ? Loc.T("PlayerUnknown")
+            : Loc.F("PlayerLine",
+                tracker.LocalPlayerName,
+                string.IsNullOrEmpty(tracker.LocalGuild) ? string.Empty : $" [{tracker.LocalGuild}]",
+                string.IsNullOrEmpty(tracker.CurrentCluster) ? "—" : tracker.CurrentCluster,
+                tracker.PartySize);
 
         var writer = _writer;
         if (writer != null)
         {
             AutosaveStatus = !string.IsNullOrEmpty(writer.LastError)
-                ? $"Ошибка автозаписи: {writer.LastError}"
-                : string.IsNullOrEmpty(writer.CurrentFile)
-                    ? $"Автозапись: {writer.Directory}"
-                    : $"Автозапись: {writer.CurrentFile}";
+                ? Loc.F("AutosaveError", writer.LastError)
+                : Loc.F("AutosaveTo", string.IsNullOrEmpty(writer.CurrentFile) ? writer.Directory : writer.CurrentFile);
         }
     }
 
@@ -322,8 +381,7 @@ public sealed class MainViewModel : ObservableObject
         if (!NpcapCapture.IsNpcapAvailable(out var npcapError))
         {
             IsNpcapMissing = true;
-            Warning = "Npcap не найден. Установите Npcap (кнопка справа) и перезапустите программу. " +
-                      $"Подробности: {npcapError}";
+            SetWarning("NpcapMissing", npcapError);
         }
 
         // 2. Папка игры
@@ -332,8 +390,7 @@ public sealed class MainViewModel : ObservableObject
         if (gameDirectory == null)
         {
             MessageBox.Show(owner,
-                "Укажите папку, куда установлен Albion Online.\n\nИз файлов игры берутся названия предметов на русском и названия локаций.",
-                "Лутлогер", MessageBoxButton.OK, MessageBoxImage.Information);
+                Loc.T("AskGameFolder"), Loc.T("AppTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
             gameDirectory = AskGameDirectory(owner);
         }
 
@@ -395,7 +452,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        CaptureStatus = "Открываю сетевые адаптеры…";
+        CaptureStatus = Loc.T("OpeningAdapters");
         var adapterId = _selectedAdapter?.Id ?? _settings.AdapterId;
         await Task.Run(() =>
         {
@@ -426,18 +483,22 @@ public sealed class MainViewModel : ObservableObject
     {
         if (gameDirectory == null)
         {
-            GameDataStatus = "Папка игры не указана — вместо названий предметов будут номера.";
-            Warning = string.IsNullOrEmpty(Warning) ? "Укажите папку игры во вкладке «Настройки»." : Warning;
+            SetGameDataStatus("GameFolderMissing");
+            if (!HasWarning)
+            {
+                SetWarning("GameFolderWarning");
+            }
+
             return;
         }
 
         GameDirectory = gameDirectory;
         _settings.GameDirectory = gameDirectory;
-        GameDataStatus = "Загрузка данных игры…";
+        SetGameDataStatus("LoadingGameData");
 
         try
         {
-            var progress = new Progress<string>(text => GameDataStatus = text);
+            var progress = new Progress<string>(key => SetGameDataStatus(key));
             _game = await GameDataLoader.LoadAsync(gameDirectory, AppPaths.CacheDirectory, progress);
             _prices.Load(AppPaths.PricesFile, _game.Items);
             if (_engine != null)
@@ -445,11 +506,15 @@ public sealed class MainViewModel : ObservableObject
                 _engine.Tracker.Game = _game;
             }
 
-            GameDataStatus = string.Format(Ru, "Предметов: {0:N0}, локаций: {1:N0}, известных цен: {2:N0}", _game.Items.Count, _game.ClusterNames.Count, _prices.Count);
+            SetGameDataStatus("GameDataLoaded", _game.Items.Count, _game.ClusterNames.Count, _prices.Count);
+            if (_warningKey == "GameFolderWarning")
+            {
+                SetWarning(string.Empty);
+            }
         }
         catch (Exception ex)
         {
-            GameDataStatus = $"Не удалось прочитать файлы игры: {ex.Message}";
+            SetGameDataStatus("GameDataError", ex.Message);
         }
     }
 
@@ -457,7 +522,7 @@ public sealed class MainViewModel : ObservableObject
     {
         while (true)
         {
-            var dialog = new OpenFolderDialog { Title = "Папка Albion Online (например, C:\\Program Files (x86)\\AlbionOnline)" };
+            var dialog = new OpenFolderDialog { Title = Loc.T("GameFolderDialog") };
             var ok = owner != null ? dialog.ShowDialog(owner) : dialog.ShowDialog();
             if (ok != true)
             {
@@ -470,8 +535,7 @@ public sealed class MainViewModel : ObservableObject
                 return resolved;
             }
 
-            MessageBox.Show(owner, "В этой папке не найдены файлы игры. Выберите папку, куда установлен Albion Online.",
-                "Лутлогер", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(owner, Loc.T("GameFolderInvalid"), Loc.T("AppTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -495,8 +559,9 @@ public sealed class MainViewModel : ObservableObject
 
     private void RefreshAdapters()
     {
+        var selectedId = _selectedAdapter?.Id ?? _settings.AdapterId;
         Adapters.Clear();
-        Adapters.Add(new CaptureAdapter(NpcapCapture.AutoAdapterId, "Авто (рекомендуется)"));
+        Adapters.Add(new CaptureAdapter(NpcapCapture.AutoAdapterId, Loc.T("AdapterAuto")));
         try
         {
             foreach (var adapter in NpcapCapture.ListAdapters())
@@ -509,7 +574,7 @@ public sealed class MainViewModel : ObservableObject
             // Npcap не установлен — останется только «Авто»
         }
 
-        SelectedAdapter = Adapters.FirstOrDefault(x => x.Id == _settings.AdapterId) ?? Adapters[0];
+        SelectedAdapter = Adapters.FirstOrDefault(x => x.Id == selectedId) ?? Adapters[0];
     }
 
     #endregion
@@ -521,8 +586,8 @@ public sealed class MainViewModel : ObservableObject
     private void NewSession()
     {
         if (Entries.Count > 0 && MessageBox.Show(Application.Current.MainWindow,
-                "Очистить журнал и начать новый файл автозаписи?\nТекущий файл останется на диске.",
-                "Новая сессия", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                Loc.T("NewSessionConfirm"),
+                Loc.T("NewSession"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
         {
             return;
         }
@@ -545,7 +610,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Экспорт журнала",
+            Title = Loc.T("ExportTitle"),
             Filter = "CSV (*.csv)|*.csv",
             FileName = $"loot_export_{DateTime.Now:yyyy-MM-dd_HH-mm}.csv",
             InitialDirectory = EnsureDirectory(LogDirectory)
@@ -560,11 +625,11 @@ public sealed class MainViewModel : ObservableObject
         {
             var visible = Entries.Where(e => IsVisible(e, applySearch: true)).OrderBy(e => e.UtcTime).ToList();
             LootCsv.Write(dialog.FileName, visible);
-            MessageBox.Show(Application.Current.MainWindow, $"Сохранено записей: {visible.Count}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(Application.Current.MainWindow, Loc.F("Exported", visible.Count), Loc.T("ExportTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(Application.Current.MainWindow, ex.Message, "Ошибка экспорта", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(Application.Current.MainWindow, ex.Message, Loc.T("ExportError"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -573,8 +638,8 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Загрузить журналы лута",
-            Filter = "CSV (*.csv)|*.csv|Все файлы (*.*)|*.*",
+            Title = Loc.T("ImportTitle"),
+            Filter = $"CSV (*.csv)|*.csv|{Loc.T("AllFiles")} (*.*)|*.*",
             Multiselect = true,
             InitialDirectory = EnsureDirectory(LogDirectory)
         };
@@ -599,7 +664,7 @@ public sealed class MainViewModel : ObservableObject
                 var result = LootCsv.Read(file, _game.Items);
                 if (!result.IsValid)
                 {
-                    errors.Add($"{Path.GetFileName(file)} — не похож на журнал лута");
+                    errors.Add(Loc.F("NotALog", Path.GetFileName(file)));
                     continue;
                 }
 
@@ -643,13 +708,13 @@ public sealed class MainViewModel : ObservableObject
 
         RefreshFilter();
 
-        var message = $"Добавлено записей: {added}\nПропущено дублей: {duplicates}";
+        var message = Loc.F("ImportResult", added, duplicates);
         if (errors.Count > 0)
         {
-            message += "\n\nНе загружены:\n" + string.Join('\n', errors);
+            message += "\n\n" + Loc.T("ImportFailed") + "\n" + string.Join('\n', errors);
         }
 
-        MessageBox.Show(Application.Current.MainWindow, message, "Загрузка журналов", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show(Application.Current.MainWindow, message, Loc.T("ImportTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private static (string By, string From, int Item, int Quantity) DuplicateKey(LootEntry e)
@@ -664,7 +729,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void BrowseLogFolder()
     {
-        var dialog = new OpenFolderDialog { Title = "Папка для автозаписи журналов", InitialDirectory = EnsureDirectory(LogDirectory) };
+        var dialog = new OpenFolderDialog { Title = Loc.T("LogFolderDialog"), InitialDirectory = EnsureDirectory(LogDirectory) };
         if (dialog.ShowDialog(Application.Current.MainWindow) != true)
         {
             return;
@@ -715,7 +780,41 @@ public sealed class MainViewModel : ObservableObject
     private bool _isComparing;
     public bool IsComparing { get => _isComparing; private set => Set(ref _isComparing, value); }
 
-    private string _comparisonSummary = "Вставьте лог сундука и нажмите «Сравнить». Учитываются записи журнала с текущими фильтрами (группа / игроки / мобы).";
+    private ComparisonStats? _lastComparison;
+    private string _comparisonError = string.Empty;
+
+    private sealed record ComparisonStats(int LootCount, int ChestLines, long NotDepositedValue, int UnknownItems, string UnknownExamples, bool NoChestLines);
+
+    public string ComparisonSummary
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(_comparisonError))
+            {
+                return Loc.F("CompareError", _comparisonError);
+            }
+
+            if (_lastComparison is not { } c)
+            {
+                return Loc.T("CompareHint");
+            }
+
+            var summary = Loc.F("CompareSummary", c.LootCount, c.ChestLines, c.NotDepositedValue);
+            if (c.UnknownItems > 0)
+            {
+                summary += "\n" + Loc.F("UnknownItems", c.UnknownItems, c.UnknownExamples);
+            }
+
+            if (c.NoChestLines)
+            {
+                summary += "\n" + Loc.T("NoChestLines");
+            }
+
+            return summary;
+        }
+    }
+
+    public string SelectedPlayerTitle => _selectedPlayer == null ? string.Empty : Loc.F("PlayerItems", _selectedPlayer.Player);
     public string ComparisonSummary { get => _comparisonSummary; private set => Set(ref _comparisonSummary, value); }
 
     public ObservableCollection<PlayerComparison> ComparisonResults { get; } = new();
@@ -728,6 +827,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (Set(ref _selectedPlayer, value))
             {
+                OnPropertyChanged(nameof(SelectedPlayerTitle));
                 UpdateSelectedPlayerItems();
             }
         }
@@ -780,7 +880,7 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show(Application.Current.MainWindow, ex.Message, "Буфер обмена", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(Application.Current.MainWindow, ex.Message, Loc.T("ClipboardTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -788,8 +888,8 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Логи сундука",
-            Filter = "Текст (*.txt;*.csv;*.tsv)|*.txt;*.csv;*.tsv|Все файлы (*.*)|*.*",
+            Title = Loc.T("ChestFilesTitle"),
+            Filter = $"{Loc.T("TextFiles")} (*.txt;*.csv;*.tsv)|*.txt;*.csv;*.tsv|{Loc.T("AllFiles")} (*.*)|*.*",
             Multiselect = true
         };
 
@@ -843,26 +943,20 @@ public sealed class MainViewModel : ObservableObject
 
             SelectedPlayer = ComparisonResults.FirstOrDefault();
 
-            var notDeposited = results.Sum(x => x.NotDepositedValue);
-            var summary = string.Format(Ru,
-                "Лута в журнале: {0:N0} · строк лога сундука: {1:N0} · не сдано на {2:N0} серебра",
-                loot.Count, parse.Entries.Count, notDeposited);
-            if (parse.UnknownItems > 0)
-            {
-                summary += string.Format(Ru, "\nНе распознано предметов в логе сундука: {0:N0} (например: {1})",
-                    parse.UnknownItems, string.Join(", ", parse.UnknownItemNames.Take(3)));
-            }
-
-            if (parse.Entries.Count == 0 && !string.IsNullOrWhiteSpace(text))
-            {
-                summary += "\nВ тексте не найдено ни одной строки лога сундука. Скопируйте лог из окна сундука в игре целиком.";
-            }
-
-            ComparisonSummary = summary;
+            _comparisonError = string.Empty;
+            _lastComparison = new ComparisonStats(
+                loot.Count,
+                parse.Entries.Count,
+                results.Sum(x => x.NotDepositedValue),
+                parse.UnknownItems,
+                string.Join(", ", parse.UnknownItemNames.Take(3)),
+                parse.Entries.Count == 0 && !string.IsNullOrWhiteSpace(text));
+            OnPropertyChanged(nameof(ComparisonSummary));
         }
         catch (Exception ex)
         {
-            ComparisonSummary = $"Ошибка сверки: {ex.Message}";
+            _comparisonError = ex.Message;
+            OnPropertyChanged(nameof(ComparisonSummary));
         }
         finally
         {
@@ -875,7 +969,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Отчёт сверки",
+            Title = Loc.T("ReportTitle"),
             Filter = "CSV (*.csv)|*.csv",
             FileName = $"chest_check_{DateTime.Now:yyyy-MM-dd_HH-mm}.csv",
             InitialDirectory = EnsureDirectory(LogDirectory)
@@ -889,7 +983,7 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             using var writer = new StreamWriter(dialog.FileName, false, new UTF8Encoding(true));
-            writer.WriteLine("Игрок;Гильдия;Предмет;Количество;Стоимость;С кого;Время лута;Время сдачи;Статус");
+            writer.WriteLine(Loc.T("ReportHeader"));
             foreach (var player in ComparisonResults)
             {
                 foreach (var item in player.Items.OrderBy(x => x.Status).ThenBy(x => x.LootUtc ?? x.DepositUtc))
@@ -898,16 +992,16 @@ public sealed class MainViewModel : ObservableObject
                         Csv(player.Player), Csv(player.Guild), Csv(item.ItemName),
                         item.Quantity.ToString(CultureInfo.InvariantCulture),
                         item.Value.ToString(CultureInfo.InvariantCulture),
-                        Csv(item.LootedFrom),
+                        Csv(SourceNameConverter.Translate(item.LootedFrom)),
                         item.LootUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? string.Empty,
                         item.DepositUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? string.Empty,
-                        Csv(item.StatusText)));
+                        Csv(LootStatusConverter.Translate(item.Status))));
                 }
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(Application.Current.MainWindow, ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(Application.Current.MainWindow, ex.Message, Loc.T("Error"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
         static string Csv(string value) => value.Contains(';') || value.Contains('"') ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;

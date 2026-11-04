@@ -16,6 +16,9 @@ public sealed class GameDatabase
 
     public static GameDatabase Empty { get; } = new(ItemDb.Empty, new Dictionary<string, string>());
 
+    /// <summary>Подпись для инстансов (данжи, острова, хайдауты). Интерфейс задаёт её на нужном языке.</summary>
+    public static string InstanceLabel { get; set; } = "инстанс";
+
     public ItemDb Items { get; }
     public IReadOnlyDictionary<string, string> ClusterNames { get; }
 
@@ -36,7 +39,7 @@ public sealed class GameDatabase
         {
             // Инстансы (данжи, острова, хайдауты) приходят в виде «база@тип@...».
             var basePart = clusterIndex.Split('@', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? clusterIndex;
-            name = ClusterNames.TryGetValue(basePart, out var baseName) ? $"{baseName} (инстанс)" : clusterIndex;
+            name = ClusterNames.TryGetValue(basePart, out var baseName) ? $"{baseName} ({InstanceLabel})" : clusterIndex;
         }
 
         return string.IsNullOrWhiteSpace(islandName) ? name : $"{name} ({islandName})";
@@ -49,6 +52,11 @@ public sealed class GameDatabase
 /// </summary>
 public static class GameDataLoader
 {
+    /// <summary>Ключи этапов загрузки (переводит интерфейс).</summary>
+    public const string ProgressReadingNames = "LoadingNames";
+    public const string ProgressReadingItems = "LoadingItems";
+    public const string ProgressReadingClusters = "LoadingClusters";
+
     private const string CacheVersion = "v1";
     private const string ItemPrefix = "@ITEMS_";
 
@@ -152,7 +160,7 @@ public static class GameDataLoader
 
         if (!File.Exists(itemsBin))
         {
-            throw new FileNotFoundException("Не найден items.bin в папке игры.", itemsBin);
+            throw new FileNotFoundException("items.bin not found", itemsBin);
         }
 
         Directory.CreateDirectory(cacheDirectory);
@@ -167,13 +175,13 @@ public static class GameDataLoader
             return new GameDatabase(new ItemDb(items), clusters);
         }
 
-        progress?.Report("Читаю названия предметов из файлов игры…");
+        progress?.Report(ProgressReadingNames);
         var names = File.Exists(localizationBin) ? ReadItemNames(localizationBin) : new Dictionary<string, (string Ru, string En)>();
 
-        progress?.Report("Читаю список предметов…");
+        progress?.Report(ProgressReadingItems);
         items = ReadItems(itemsBin, names);
 
-        progress?.Report("Читаю список локаций…");
+        progress?.Report(ProgressReadingClusters);
         clusters = File.Exists(worldBin) ? ReadClusters(worldBin) : new Dictionary<string, string>();
 
         try

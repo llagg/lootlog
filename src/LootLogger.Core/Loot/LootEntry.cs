@@ -16,7 +16,13 @@ public sealed class LootEntry
 
     public required int ItemIndex { get; init; }
     public string UniqueName { get; init; } = string.Empty;
+    /// <summary>Название на момент записи (для предметов, которых нет в справочнике).</summary>
     public string ItemName { get; init; } = string.Empty;
+
+    public Game.ItemInfo? Item { get; init; }
+
+    /// <summary>Название на текущем языке интерфейса.</summary>
+    public string DisplayItemName => Item?.DisplayName ?? ItemName;
     public required int Quantity { get; init; }
 
     /// <summary>Оценочная стоимость одной штуки в серебре (0 — неизвестна).</summary>

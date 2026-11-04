@@ -12,8 +12,19 @@ public sealed class ItemInfo
         Enchantment = ParseEnchantment(uniqueName);
         IsTrash = uniqueName.Contains("TRASH", StringComparison.Ordinal);
 
-        var baseName = !string.IsNullOrWhiteSpace(nameRu) ? nameRu : !string.IsNullOrWhiteSpace(nameEn) ? nameEn : uniqueName;
-        DisplayName = Tier > 0 ? $"{baseName} (T{Tier}.{Enchantment})" : baseName;
+        _displayRu = WithTier(!string.IsNullOrWhiteSpace(nameRu) ? nameRu : !string.IsNullOrWhiteSpace(nameEn) ? nameEn : uniqueName);
+        _displayEn = WithTier(!string.IsNullOrWhiteSpace(nameEn) ? nameEn : !string.IsNullOrWhiteSpace(nameRu) ? nameRu : uniqueName);
+    }
+
+    private readonly string _displayRu;
+    private readonly string _displayEn;
+
+    /// <summary>Показывать названия предметов на английском (переключается в интерфейсе).</summary>
+    public static bool UseEnglish { get; set; }
+
+    private string WithTier(string name)
+    {
+        return Tier > 0 ? $"{name} (T{Tier}.{Enchantment})" : name;
     }
 
     public int Index { get; }
@@ -24,8 +35,8 @@ public sealed class ItemInfo
     public int Enchantment { get; }
     public bool IsTrash { get; }
 
-    /// <summary>Название для показа: русское имя и уровень, например «Меч мастера (T6.1)».</summary>
-    public string DisplayName { get; }
+    /// <summary>Название для показа на выбранном языке с уровнем, например «Меч мастера (T6.1)».</summary>
+    public string DisplayName => UseEnglish ? _displayEn : _displayRu;
 
     public static int ParseTier(string uniqueName)
     {
