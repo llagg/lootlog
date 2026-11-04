@@ -69,7 +69,7 @@
             </StackPanel>
         </Border>
 
-        <TabControl Margin="10,8,10,10">
+        <TabControl Margin="10,8,10,10" SelectedIndex="{Binding SelectedTab}">
             <!-- ЖУРНАЛ -->
             <TabItem Header="{local:Tr TabJournal}">
                 <DockPanel Margin="0,10,0,0">
@@ -105,6 +105,126 @@
                             <DataGridTextColumn Header="{local:Tr ColZone}" Width="150" Binding="{Binding Cluster}" ElementStyle="{StaticResource MutedCell}" />
                         </DataGrid.Columns>
                     </DataGrid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- СТАТИСТИКА ИГРОКОВ -->
+            <TabItem Header="{local:Tr TabStats}">
+                <DockPanel Margin="0,10,0,0">
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <CheckBox Content="{local:Tr OnlyParty}" IsChecked="{Binding OnlyParty}" Margin="0,0,16,6" ToolTip="{local:Tr OnlyPartyTip}" />
+                        <CheckBox Content="{local:Tr PlayerLoot}" IsChecked="{Binding ShowPlayerLoot}" Margin="0,0,16,6" />
+                        <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,24,6" />
+                        <TextBlock Text="{local:Tr GuildFilter}" VerticalAlignment="Center" Margin="0,0,8,6" />
+                        <ComboBox MinWidth="200" Margin="0,0,0,6" ItemsSource="{Binding Stats.Guilds}" SelectedItem="{Binding Stats.SelectedGuild}" DisplayMemberPath="Display" />
+                    </WrapPanel>
+
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                        <TextBlock Text="{Binding Stats.Summary}" />
+                        <TextBlock Text="{local:Tr Legend}" Style="{StaticResource Hint}" Margin="0,2,0,0" />
+                    </StackPanel>
+
+                    <ListBox ItemsSource="{Binding Stats.Rows}" Background="Transparent" BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter />
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,6,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="230" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Rank, StringFormat='#{0}'}" Style="{StaticResource Hint}" FontSize="15" Margin="0,0,8,0" />
+                                                <TextBlock Text="{Binding Player}" FontSize="15" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Guild}" Style="{StaticResource Hint}" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Totals}" Foreground="{StaticResource SilverBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                            <TextBlock Text="{Binding Comparison}" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                        <ItemsControl Grid.Column="1" ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Width="56" Height="56" Margin="2" CornerRadius="4" BorderThickness="2" Background="#15171B"
+                                                            ToolTip="{Binding ToolTipText}" ToolTipService.InitialShowDelay="150">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.Deposited}">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource GoodBrush}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.NotDeposited}">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource BadBrush}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.Lost}">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource WarnBrush}" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DiedWithLoot}">
+                                                                        <Setter Property="BorderBrush" Value="#A78BFA" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <Grid>
+                                                            <Image Source="{Binding Icon}" Width="48" Height="48" RenderOptions.BitmapScalingMode="HighQuality" />
+                                                            <TextBlock Text="{Binding ShortLabel}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Foreground" Value="{StaticResource MutedText}" />
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="#CC000000" CornerRadius="3" Padding="3,0" Margin="0,0,1,1">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding QuantityBadge}" Value="">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <TextBlock Text="{Binding QuantityBadge}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                                                            </Border>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </DockPanel>
             </TabItem>
 
@@ -217,6 +337,9 @@
                         </DockPanel>
                         <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,20"
                                    Text="{local:Tr AutosaveHint}" />
+
+                        <TextBlock Text="{local:Tr IconsTitle}" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="{Binding IconsStatus}" Style="{StaticResource Hint}" Margin="0,0,0,20" />
 
                         <TextBlock Text="{local:Tr ValueTitle}" Style="{StaticResource SectionTitle}" />
                         <TextBlock Style="{StaticResource Hint}"

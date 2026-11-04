@@ -11,6 +11,7 @@ public static class AppPaths
     public static string SettingsFile => Path.Combine(DataDirectory, "settings.json");
     public static string PricesFile => Path.Combine(DataDirectory, "prices.tsv");
     public static string CacheDirectory => Path.Combine(DataDirectory, "cache");
+    public static string IconsDirectory => Path.Combine(DataDirectory, "icons");
     public static string ErrorLog => Path.Combine(DataDirectory, "error.log");
 
     public static string DefaultLogDirectory { get; } = Path.Combine(

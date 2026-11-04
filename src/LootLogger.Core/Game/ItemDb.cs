@@ -80,6 +80,8 @@ public sealed class ItemDb
 
     public int Count { get; }
 
+    public IEnumerable<ItemInfo> All => _byIndex.Where(x => x != null).Select(x => x!);
+
     public ItemInfo? Get(int index)
     {
         return index > 0 && index < _byIndex.Length ? _byIndex[index] : null;

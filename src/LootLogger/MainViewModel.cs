@@ -53,6 +53,12 @@ public sealed class MainViewModel : ObservableObject
         _searchTimer.Stop();
 
         Loc.Instance.LanguageChanged += OnLanguageChanged;
+        IconCache.Instance.ProgressChanged += UpdateIconsStatus;
+        Stats.FilterChanged += () =>
+        {
+            _statsDirty = true;
+            UpdateStatsIfNeeded(force: true);
+        };
         _journalSummary = Loc.T("NoEntries");
 
         ExportCsvCommand = new RelayCommand(ExportCsv);
@@ -111,6 +117,77 @@ public sealed class MainViewModel : ObservableObject
         // строки таблиц пересоздаются — названия предметов и статусы берутся на новом языке
         EntriesView.Refresh();
         UpdateSelectedPlayerItems();
+        UpdateIconsStatus();
+        Stats.Reset();
+        _statsDirty = true;
+    }
+
+    #endregion
+
+    #region Статистика игроков
+
+    public const int StatsTabIndex = 1;
+
+    public StatsViewModel Stats { get; } = new();
+
+    private bool _statsDirty = true;
+    private DateTime _statsUpdatedUtc = DateTime.MinValue;
+
+    private int _selectedTab;
+    public int SelectedTab
+    {
+        get => _selectedTab;
+        set
+        {
+            if (Set(ref _selectedTab, value) && value == StatsTabIndex)
+            {
+                _statsDirty = true;
+                UpdateStatsIfNeeded(force: true);
+            }
+        }
+    }
+
+    /// <summary>Пересчитываем статистику только когда вкладка открыта и есть изменения, не чаще раза в секунду.</summary>
+    private void UpdateStatsIfNeeded(bool force = false)
+    {
+        if (_selectedTab != StatsTabIndex || !_statsDirty)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (!force && now - _statsUpdatedUtc < TimeSpan.FromSeconds(1))
+        {
+            return;
+        }
+
+        _statsDirty = false;
+        _statsUpdatedUtc = now;
+        Stats.Update(Entries.Where(e => IsVisible(e, applySearch: false)).ToList());
+    }
+
+    private string _iconsStatus = string.Empty;
+    public string IconsStatus { get => _iconsStatus; private set => Set(ref _iconsStatus, value); }
+
+    private void UpdateIconsStatus()
+    {
+        var icons = IconCache.Instance;
+        if (icons.TotalItems == 0)
+        {
+            IconsStatus = string.Empty;
+        }
+        else if (icons.IsPaused)
+        {
+            IconsStatus = Loc.F("IconsPaused", icons.OnDiskCount, icons.TotalItems);
+        }
+        else if (icons.IsDownloading || icons.OnDiskCount < icons.TotalItems)
+        {
+            IconsStatus = Loc.F("IconsProgress", icons.OnDiskCount, icons.TotalItems);
+        }
+        else
+        {
+            IconsStatus = Loc.F("IconsDone", icons.OnDiskCount);
+        }
     }
 
     #endregion
@@ -226,6 +303,8 @@ public sealed class MainViewModel : ObservableObject
         }
 
         UpdateJournalSummary();
+        _statsDirty = true;
+        UpdateStatsIfNeeded(force: true);
     }
 
     private void UpdateJournalSummary()
@@ -238,6 +317,7 @@ public sealed class MainViewModel : ObservableObject
     private void AddEntry(LootEntry entry)
     {
         Entries.Insert(0, entry);
+        _statsDirty = true;
         if (IsVisible(entry, applySearch: true))
         {
             _shownCount++;
@@ -359,6 +439,8 @@ public sealed class MainViewModel : ObservableObject
         {
             UpdateStatus();
         }
+
+        UpdateStatsIfNeeded();
     }
 
     private void UpdateStatus()
@@ -558,6 +640,7 @@ public sealed class MainViewModel : ObservableObject
             }
 
             SetGameDataStatus("GameDataLoaded", _game.Items.Count, _game.ClusterNames.Count, _prices.Count);
+            IconCache.Instance.StartBackgroundDownload(_game.Items.All.Select(x => x.UniqueName));
             if (_warningKey == "GameFolderWarning")
             {
                 SetWarning(string.Empty);
@@ -1003,6 +1086,8 @@ public sealed class MainViewModel : ObservableObject
                 return (parsed, LootComparator.Compare(loot, parsed.Entries, kills));
             });
 
+            Stats.SetComparison(results);
+            _statsDirty = true;
             ComparisonResults.Clear();
             foreach (var player in results)
             {
