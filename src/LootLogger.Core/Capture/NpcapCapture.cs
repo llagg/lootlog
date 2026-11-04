@@ -69,6 +69,9 @@ public sealed class NpcapCapture : IDisposable
 
     public long UdpPackets;
 
+    /// <summary>Самые активные UDP-потоки: адаптер, порты, распознан ли как игра, первые байты.</summary>
+    public IReadOnlyList<string> FlowSamples { get; private set; } = [];
+
     public bool IsRunning => _thread?.IsAlive == true;
     public string ActiveAdapterName { get; private set; } = string.Empty;
     public int OpenedAdapters { get; private set; }
@@ -321,6 +324,9 @@ public sealed class NpcapCapture : IDisposable
         }
 
         flow.LastSeenUtc = now;
+        flow.Packets++;
+        flow.AdapterName ??= stats.Name;
+        flow.Key = key;
 
         bool incoming;
         if (GamePorts.Contains(sourcePort) || GamePorts.Contains(destinationPort))
@@ -329,11 +335,22 @@ public sealed class NpcapCapture : IDisposable
         }
         else
         {
-            if (!IsDiscoveryMode || !TryClassifyCustomFlow(flow, payload, sourcePort, destinationPort, stats))
+            if (!IsDiscoveryMode)
             {
                 return;
             }
 
+            if (!flow.IsGame)
+            {
+                flow.RememberHead(payload);
+            }
+
+            if (!TryFindGamePacket(flow, payload, sourcePort, destinationPort, stats, out var offset))
+            {
+                return;
+            }
+
+            payload = payload[offset..];
             incoming = sourcePort == flow.ServerPort;
             _lastCustomPortGameUtc = now;
         }
@@ -358,40 +375,55 @@ public sealed class NpcapCapture : IDisposable
         _onPayload(payload, incoming);
     }
 
-    /// <summary>Решает, игровой ли это поток на нестандартных портах, по содержимому первых пакетов.</summary>
-    private static bool TryClassifyCustomFlow(Flow flow, ReadOnlySpan<byte> payload, ushort sourcePort, ushort destinationPort, AdapterStats stats)
+    /// <summary>
+    /// Ищет пакет игры в датаграмме на нестандартных портах и решает, игровой ли это поток.
+    /// Сдвиг (длину заголовка прокси) запоминаем отдельно для каждой стороны потока.
+    /// </summary>
+    private static bool TryFindGamePacket(Flow flow, ReadOnlySpan<byte> payload, ushort sourcePort, ushort destinationPort, AdapterStats stats, out int offset)
     {
+        offset = 0;
         if (flow.IsIgnored)
         {
             return false;
         }
 
-        if (flow.IsGame)
-        {
-            return true;
-        }
-
-        var probe = PhotonProbe.Inspect(payload);
+        var fromLow = sourcePort == flow.Key.Low;
+        var probe = PhotonProbe.Find(payload, fromLow ? flow.PrefixFromLow : flow.PrefixFromHigh, out offset);
         if (probe == PhotonProbeResult.NotPhoton)
         {
-            flow.NonPhotonPackets++;
-            if (flow.NonPhotonPackets >= NonPhotonPacketsToIgnoreFlow && flow.PhotonPackets == 0)
+            if (!flow.IsGame)
             {
-                flow.IsIgnored = true;
+                flow.NonPhotonPackets++;
+                if (flow.NonPhotonPackets >= NonPhotonPacketsToIgnoreFlow && flow.PhotonPackets == 0)
+                {
+                    flow.IsIgnored = true;
+                }
             }
 
             return false;
         }
 
-        flow.PhotonPackets++;
-        stats.PhotonPackets++;
-        if (probe == PhotonProbeResult.FromServer)
+        if (fromLow)
         {
-            flow.ServerPort = sourcePort;
+            flow.PrefixFromLow = offset;
         }
-        else if (probe == PhotonProbeResult.FromClient)
+        else
         {
-            flow.ServerPort = destinationPort;
+            flow.PrefixFromHigh = offset;
+        }
+
+        if (!flow.IsGame)
+        {
+            flow.PhotonPackets++;
+            stats.PhotonPackets++;
+            if (probe == PhotonProbeResult.FromServer)
+            {
+                flow.ServerPort = sourcePort;
+            }
+            else if (probe == PhotonProbeResult.FromClient)
+            {
+                flow.ServerPort = destinationPort;
+            }
         }
 
         return flow.IsGame;
@@ -415,6 +447,14 @@ public sealed class NpcapCapture : IDisposable
         {
             _flows.Remove(expired);
         }
+
+        // снимок самых активных потоков для диагностики (читает интерфейс)
+        FlowSamples = _flows.Values
+            .OrderByDescending(x => x.IsGame)
+            .ThenByDescending(x => x.Packets)
+            .Take(6)
+            .Select(x => x.Describe())
+            .ToList();
 
         var silent = now - LastGamePacketUtc > DiscoveryDelay && now - _startedUtc > DiscoveryDelay;
         if (!IsDiscoveryMode && silent)
@@ -514,6 +554,13 @@ public sealed class NpcapCapture : IDisposable
 
     private sealed class Flow
     {
+        public FlowKey Key;
+        public string? AdapterName;
+        public long Packets;
+        public int PrefixFromLow = -1;
+        public int PrefixFromHigh = -1;
+        private readonly byte[] _head = new byte[40];
+        private int _headLength;
         public DateTime LastSeenUtc;
         public Pcap? Owner;
         public DateTime OwnerLastSeenUtc;
@@ -522,5 +569,18 @@ public sealed class NpcapCapture : IDisposable
         public bool IsIgnored;
         public ushort? ServerPort;
         public bool IsGame => ServerPort != null && PhotonPackets >= PhotonPacketsToConfirmFlow;
+
+        public void RememberHead(ReadOnlySpan<byte> payload)
+        {
+            _headLength = Math.Min(_head.Length, payload.Length);
+            payload[.._headLength].CopyTo(_head);
+        }
+
+        public string Describe()
+        {
+            var state = IsGame ? $"GAME server={ServerPort} prefix={PrefixFromLow}/{PrefixFromHigh}" : IsIgnored ? "other" : $"photon={PhotonPackets}";
+            var head = Convert.ToHexString(_head, 0, _headLength);
+            return $"{Key.Low}<->{Key.High} n={Packets} {state} [{AdapterName}] {head}";
+        }
     }
 }

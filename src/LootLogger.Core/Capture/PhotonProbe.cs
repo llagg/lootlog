@@ -24,6 +24,45 @@ public enum PhotonProbeResult
 public static class PhotonProbe
 {
     private const int HeaderLength = 12;
+
+    /// <summary>Сколько байт служебного заголовка прокси (SOCKS5 и т. п.) допускаем перед пакетом игры.</summary>
+    public const int MaxPrefixLength = 64;
+
+    /// <summary>
+    /// Ищет пакет Photon внутри датаграммы: сначала по известному сдвигу, затем со сдвигом 0…<see cref="MaxPrefixLength"/>.
+    /// Ускорители часто добавляют перед пакетом игры свой заголовок (адрес и порт настоящего сервера).
+    /// </summary>
+    public static PhotonProbeResult Find(ReadOnlySpan<byte> datagram, int preferredOffset, out int offset)
+    {
+        if (preferredOffset >= 0 && preferredOffset < datagram.Length)
+        {
+            var preferred = Inspect(datagram[preferredOffset..]);
+            if (preferred != PhotonProbeResult.NotPhoton)
+            {
+                offset = preferredOffset;
+                return preferred;
+            }
+        }
+
+        var last = Math.Min(MaxPrefixLength, datagram.Length - HeaderLength - CommandHeaderLength);
+        for (var candidate = 0; candidate <= last; candidate++)
+        {
+            if (candidate == preferredOffset)
+            {
+                continue;
+            }
+
+            var result = Inspect(datagram[candidate..]);
+            if (result != PhotonProbeResult.NotPhoton)
+            {
+                offset = candidate;
+                return result;
+            }
+        }
+
+        offset = -1;
+        return PhotonProbeResult.NotPhoton;
+    }
     private const int CommandHeaderLength = 12;
 
     public static PhotonProbeResult Inspect(ReadOnlySpan<byte> packet)

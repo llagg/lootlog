@@ -309,6 +309,16 @@ public sealed class MainViewModel : ObservableObject
             sb.AppendLine(Loc.F("DiagRow", row.UdpPackets, row.PhotonPackets, row.GamePackets, row.Name));
         }
 
+        var flows = capture.FlowSamples;
+        if (flows.Count > 0)
+        {
+            sb.AppendLine(Loc.T("DiagFlows"));
+            foreach (var flow in flows)
+            {
+                sb.AppendLine("  " + flow);
+            }
+        }
+
         return sb.ToString().TrimEnd();
     }
 

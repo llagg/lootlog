@@ -60,3 +60,42 @@ public class ProbeTests
         Assert.Equal(PhotonProbeResult.NotPhoton, PhotonProbe.Inspect(packet[..^3]));
     }
 }
+
+public class ProbePrefixTests
+{
+    [Fact]
+    public void GamePacket_BehindSocks5Header_IsFound()
+    {
+        var game = PhotonBuilder.EventPacket(1, (short) LootLogger.Core.Protocol.EventCodes.OtherGrabbedLoot,
+            new() { [1] = "A", [2] = "B", [4] = 1, [5] = 1 });
+        // SOCKS5 UDP: RSV RSV FRAG ATYP=IPv4 ADDR(4) PORT(2)
+        var socks = new byte[] { 0, 0, 0, 1, 5, 188, 125, 10, 0x13, 0xC0 };
+        var datagram = socks.Concat(game).ToArray();
+
+        Assert.Equal(PhotonProbeResult.NotPhoton, PhotonProbe.Inspect(datagram));
+        Assert.Equal(PhotonProbeResult.FromServer, PhotonProbe.Find(datagram, -1, out var offset));
+        Assert.Equal(10, offset);
+
+        // известный сдвиг проверяется первым
+        Assert.Equal(PhotonProbeResult.FromServer, PhotonProbe.Find(datagram, 10, out offset));
+        Assert.Equal(10, offset);
+    }
+
+    [Fact]
+    public void Find_RejectsRandomData()
+    {
+        var random = new Random(7);
+        var found = 0;
+        for (var i = 0; i < 3_000; i++)
+        {
+            var data = new byte[random.Next(12, 1400)];
+            random.NextBytes(data);
+            if (PhotonProbe.Find(data, -1, out _) != PhotonProbeResult.NotPhoton)
+            {
+                found++;
+            }
+        }
+
+        Assert.True(found <= 3, $"false positives: {found}");
+    }
+}
