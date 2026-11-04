@@ -1,0 +1,57 @@
+name: Сборка
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Тесты
+        run: dotnet test tests/LootLogger.Tests/LootLogger.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+      - name: Сборка (нужен .NET 10 Desktop Runtime)
+        run: dotnet publish src/LootLogger/LootLogger.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o out/small
+
+      - name: Сборка (всё в одном файле, без установки .NET)
+        run: dotnet publish src/LootLogger/LootLogger.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o out/full
+
+      - name: Упаковка
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item out/small/LootLogger.exe release/LootLogger.exe
+          Copy-Item out/full/LootLogger.exe release/LootLogger-standalone.exe
+          Get-ChildItem release | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LootLogger
+          path: release/*.exe
+
+      - name: Публикация в Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "build-${{ github.run_number }}"
+          $notes = @"
+          Автоматическая сборка из коммита ${{ github.sha }}.
+
+          - **LootLogger.exe** — маленький файл, нужен установленный .NET 10 Desktop Runtime (он уже есть, если у вас работал Statistics Analysis Tool).
+          - **LootLogger-standalone.exe** — работает без установки .NET, но весит больше.
+
+          Для захвата нужен Npcap: https://npcap.com
+          "@
+          gh release create $tag release/LootLogger.exe release/LootLogger-standalone.exe --title "Лутлогер $tag" --notes $notes --latest

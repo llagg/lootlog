@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/LootLogger.Core/LootLogger.Core.csproj" />
+  <Project Path="src/LootLogger/LootLogger.csproj" />
+  <Project Path="tests/LootLogger.Tests/LootLogger.Tests.csproj" />
+</Solution>
