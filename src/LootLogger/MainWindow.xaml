@@ -11,15 +11,6 @@
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
-        <Style x:Key="DarkCombo" TargetType="ComboBox">
-            <Setter Property="Padding" Value="6,4" />
-            <Style.Resources>
-                <Style TargetType="TextBlock">
-                    <Setter Property="Foreground" Value="Black" />
-                </Style>
-            </Style.Resources>
-        </Style>
-
         <Style x:Key="StatusRow" TargetType="DataGridRow">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.NotDeposited}">
@@ -42,7 +33,7 @@
                 <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                     <TextBlock Text="{local:Tr Language}" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <ComboBox Style="{StaticResource DarkCombo}" Width="110" ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" DisplayMemberPath="Name" />
+                    <ComboBox Width="110" ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}" DisplayMemberPath="Name" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center">
@@ -204,10 +195,15 @@
                         <DockPanel Margin="0,0,0,4">
                             <Button DockPanel.Dock="Right" Content="{local:Tr Apply}" Command="{Binding RestartCaptureCommand}" Style="{StaticResource AccentButton}" Margin="8,0,0,0" />
                             <Button DockPanel.Dock="Right" Content="{local:Tr RefreshList}" Command="{Binding RefreshAdaptersCommand}" Margin="8,0,0,0" />
-                            <ComboBox Style="{StaticResource DarkCombo}" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" DisplayMemberPath="DisplayName" />
+                            <ComboBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" DisplayMemberPath="DisplayName" />
                         </DockPanel>
                         <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,20"
                                    Text="{local:Tr AdapterHint}" />
+
+                        <DockPanel Margin="0,0,0,20">
+                            <Button DockPanel.Dock="Right" Content="{local:Tr CopyDiagnostics}" Command="{Binding CopyDiagnosticsCommand}" Margin="8,0,0,0" VerticalAlignment="Top" />
+                            <TextBlock Text="{Binding CaptureDiagnostics}" FontFamily="Consolas" FontSize="12" Style="{StaticResource Hint}" />
+                        </DockPanel>
 
                         <TextBlock Text="{local:Tr Autosave}" Style="{StaticResource SectionTitle}" />
                         <DockPanel Margin="0,0,0,4">

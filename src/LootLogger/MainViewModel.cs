@@ -69,6 +69,7 @@ public sealed class MainViewModel : ObservableObject
         ExportComparisonCommand = new RelayCommand(ExportComparison, () => ComparisonResults.Count > 0);
         OpenNpcapSiteCommand = new RelayCommand(() => OpenUrl("https://npcap.com/#download"));
         BrowseLogFolderCommand = new RelayCommand(BrowseLogFolder);
+        CopyDiagnosticsCommand = new RelayCommand(CopyDiagnostics);
     }
 
     #region Язык
@@ -290,6 +291,42 @@ public sealed class MainViewModel : ObservableObject
     private bool _isNpcapMissing;
     public bool IsNpcapMissing { get => _isNpcapMissing; private set => Set(ref _isNpcapMissing, value); }
 
+    private string _captureDiagnostics = string.Empty;
+    public string CaptureDiagnostics { get => _captureDiagnostics; private set => Set(ref _captureDiagnostics, value); }
+
+    private static string BuildDiagnostics(NpcapCapture capture)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(Loc.F("DiagMode", capture.IsDiscoveryMode ? Loc.T("DiagModeDiscovery") : Loc.T("DiagModePorts"), capture.OpenedAdapters));
+        var rows = capture.GetDiagnostics();
+        if (rows.Count == 0)
+        {
+            sb.Append(Loc.T("DiagNoPackets"));
+        }
+
+        foreach (var row in rows.Take(12))
+        {
+            sb.AppendLine(Loc.F("DiagRow", row.UdpPackets, row.PhotonPackets, row.GamePackets, row.Name));
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private void CopyDiagnostics()
+    {
+        try
+        {
+            var text = $"{CaptureStatus}\n{PlayerStatus}\n{CaptureDiagnostics}\n" +
+                       $"Photon: malformed={Core.Photon.PhotonDiagnostics.MalformedPayloads}, lostFragments={Core.Photon.PhotonDiagnostics.LostFragmentAssemblies}, " +
+                       $"duplicates={_engine?.DuplicateCommands}, errors={_engine?.ParserErrors}";
+            Clipboard.SetText(text);
+        }
+        catch
+        {
+            // буфер обмена занят — не страшно
+        }
+    }
+
     private string _autosaveStatus = string.Empty;
     public string AutosaveStatus { get => _autosaveStatus; private set => Set(ref _autosaveStatus, value); }
 
@@ -341,15 +378,19 @@ public sealed class MainViewModel : ObservableObject
         else if (IsGameDataSeen)
         {
             IsCaptureOk = true;
-            CaptureStatus = Loc.F("DataFlowing", capture.ActiveAdapterName, capture.GamePackets);
+            CaptureStatus = Loc.F(capture.IsCustomPortDetected ? "DataFlowingProxy" : "DataFlowing", capture.ActiveAdapterName, capture.GamePackets);
         }
         else
         {
             IsCaptureOk = true;
-            CaptureStatus = capture.GamePackets == 0
-                ? Loc.F("WaitingTraffic", capture.OpenedAdapters)
-                : Loc.T("NoTrafficNow");
+            CaptureStatus = capture.IsDiscoveryMode
+                ? Loc.F("SearchingAllPorts", capture.OpenedAdapters, capture.UdpPackets)
+                : capture.GamePackets == 0
+                    ? Loc.F("WaitingTraffic", capture.OpenedAdapters)
+                    : Loc.T("NoTrafficNow");
         }
+
+        CaptureDiagnostics = BuildDiagnostics(capture);
 
         PlayerStatus = string.IsNullOrEmpty(tracker.LocalPlayerName)
             ? Loc.T("PlayerUnknown")
@@ -1024,6 +1065,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ExportComparisonCommand { get; }
     public RelayCommand OpenNpcapSiteCommand { get; }
     public RelayCommand BrowseLogFolderCommand { get; }
+    public RelayCommand CopyDiagnosticsCommand { get; }
 
     private static void OpenUrl(string url)
     {

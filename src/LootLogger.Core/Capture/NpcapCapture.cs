@@ -5,6 +5,8 @@ namespace LootLogger.Core.Capture;
 
 public sealed record CaptureAdapter(string Id, string DisplayName);
 
+public sealed record AdapterDiagnostics(string Name, long UdpPackets, long PhotonPackets, long GamePackets);
+
 public enum CaptureProblem
 {
     None,
@@ -23,10 +25,19 @@ public sealed class NpcapCapture : IDisposable
     /// <summary>Порты игровых серверов Albion (Photon).</summary>
     public static readonly HashSet<ushort> GamePorts = [5055, 5056, 5058];
 
-    private const string Filter = "(udp and (port 5055 or port 5056 or port 5058)) or (ip proto 17 and (ip[6:2] & 0x3fff != 0))";
+    /// <summary>Обычный режим: в драйвере пропускаются только порты игры.</summary>
+    private const string PortsFilter = "(udp and (port 5055 or port 5056 or port 5058)) or (ip proto 17 and (ip[6:2] & 0x3fff != 0))";
+
+    /// <summary>Режим поиска: весь UDP, игру узнаём по содержимому пакетов (ускорители, VPN с прокси).</summary>
+    private const string DiscoveryFilter = "udp";
+
     private const int KernelBufferSize = 16 * 1024 * 1024;
-    private static readonly TimeSpan AdapterEvaluationInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan AdapterIdleTimeout = TimeSpan.FromSeconds(20);
+    private const int MaxFlows = 4096;
+    private const int PhotonPacketsToConfirmFlow = 3;
+    private const int NonPhotonPacketsToIgnoreFlow = 30;
+    private static readonly TimeSpan DiscoveryDelay = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan EvaluationInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FlowIdleTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>Вызывается для каждой полезной нагрузки игрового UDP-пакета. incoming = от сервера к клиенту.</summary>
     private readonly PayloadHandler _onPayload;
@@ -36,9 +47,12 @@ public sealed class NpcapCapture : IDisposable
     private volatile bool _stopRequested;
 
     private readonly Dictionary<Pcap, AdapterStats> _stats = new();
-    private Pcap? _activePcap;
-    private DateTime _nextEvaluationUtc;
+    private readonly Dictionary<FlowKey, Flow> _flows = new();
     private readonly Ipv4Reassembler _reassembler = new();
+    private PcapDispatcher? _dispatcher;
+    private DateTime _startedUtc;
+    private DateTime _nextEvaluationUtc;
+    private DateTime _lastCustomPortGameUtc = DateTime.MinValue;
 
     public delegate void PayloadHandler(ReadOnlySpan<byte> payload, bool incoming);
 
@@ -46,6 +60,14 @@ public sealed class NpcapCapture : IDisposable
     {
         _onPayload = onPayload;
     }
+
+    /// <summary>Идёт поиск игры на любых портах (стандартные порты молчат).</summary>
+    public bool IsDiscoveryMode { get; private set; }
+
+    /// <summary>Игра найдена на нестандартном порту (через ускоритель или прокси).</summary>
+    public bool IsCustomPortDetected => DateTime.UtcNow - _lastCustomPortGameUtc < FlowIdleTimeout;
+
+    public long UdpPackets;
 
     public bool IsRunning => _thread?.IsAlive == true;
     public string ActiveAdapterName { get; private set; } = string.Empty;
@@ -80,11 +102,6 @@ public sealed class NpcapCapture : IDisposable
         var devices = Pcap.ListDevices();
         foreach (var device in devices)
         {
-            if (!device.Flags.HasFlag(PcapDeviceFlags.Up))
-            {
-                continue;
-            }
-
             var friendly = friendlyNames.FirstOrDefault(x => device.Name.EndsWith(x.Id, StringComparison.OrdinalIgnoreCase)).Name;
             var description = device.Description ?? device.Name;
             var display = string.IsNullOrWhiteSpace(friendly) ? description : $"{friendly} — {description}";
@@ -146,10 +163,13 @@ public sealed class NpcapCapture : IDisposable
         try
         {
             dispatcher = new PcapDispatcher(OnPacket, rotateAfter: 64);
+            _dispatcher = dispatcher;
+            _startedUtc = DateTime.UtcNow;
+            IsDiscoveryMode = false;
 
             // Фильтр задаём до открытия: тогда он ставится на каждый адаптер отдельно,
             // и адаптер, который фильтр не принял, просто пропускается, а не роняет весь захват.
-            dispatcher.Filter = Filter;
+            dispatcher.Filter = PortsFilter;
             OpenedAdapters = OpenAdapters(dispatcher, adapterId);
             if (OpenedAdapters == 0)
             {
@@ -173,7 +193,7 @@ public sealed class NpcapCapture : IDisposable
                     continue;
                 }
 
-                EvaluateAdapters();
+                Evaluate();
 
                 if (read == 0)
                 {
@@ -189,10 +209,15 @@ public sealed class NpcapCapture : IDisposable
         finally
         {
             dispatcher?.Dispose();
+            _dispatcher = null;
             OpenedAdapters = 0;
             ActiveAdapterName = string.Empty;
-            _stats.Clear();
-            _activePcap = null;
+            lock (_stats)
+            {
+                _stats.Clear();
+            }
+
+            _flows.Clear();
             ready.Set();
         }
     }
@@ -204,8 +229,7 @@ public sealed class NpcapCapture : IDisposable
         foreach (var device in devices)
         {
             var isSelected = string.IsNullOrEmpty(adapterId)
-                ? device.Flags.HasFlag(PcapDeviceFlags.Up)
-                : string.Equals(device.Name, adapterId, StringComparison.OrdinalIgnoreCase);
+                || string.Equals(device.Name, adapterId, StringComparison.OrdinalIgnoreCase);
             if (!isSelected)
             {
                 continue;
@@ -279,55 +303,105 @@ public sealed class NpcapCapture : IDisposable
             return;
         }
 
-        var incoming = GamePorts.Contains(sourcePort);
-        if (!incoming && !GamePorts.Contains(destinationPort))
+        UdpPackets++;
+        var stats = GetStats(pcap);
+        stats.UdpPackets++;
+
+        var now = DateTime.UtcNow;
+        var key = FlowKey.Create(sourcePort, destinationPort);
+        if (!_flows.TryGetValue(key, out var flow))
+        {
+            if (_flows.Count >= MaxFlows)
+            {
+                _flows.Clear();
+            }
+
+            flow = new Flow();
+            _flows[key] = flow;
+        }
+
+        flow.LastSeenUtc = now;
+
+        bool incoming;
+        if (GamePorts.Contains(sourcePort) || GamePorts.Contains(destinationPort))
+        {
+            incoming = GamePorts.Contains(sourcePort);
+        }
+        else
+        {
+            if (!IsDiscoveryMode || !TryClassifyCustomFlow(flow, payload, sourcePort, destinationPort, stats))
+            {
+                return;
+            }
+
+            incoming = sourcePort == flow.ServerPort;
+            _lastCustomPortGameUtc = now;
+        }
+
+        // Один и тот же поток может быть виден на двух адаптерах (виртуальные коммутаторы Hyper-V/WSL).
+        // Закрепляем поток за адаптером, где его увидели первым, чтобы не задвоить лут.
+        if (flow.Owner is null || now - flow.OwnerLastSeenUtc > FlowIdleTimeout)
+        {
+            flow.Owner = pcap;
+        }
+
+        if (!ReferenceEquals(flow.Owner, pcap))
         {
             return;
         }
 
-        if (!AcceptAdapter(pcap, incoming))
-        {
-            return;
-        }
-
+        flow.OwnerLastSeenUtc = now;
+        stats.GamePackets++;
         GamePackets++;
-        LastGamePacketUtc = DateTime.UtcNow;
+        LastGamePacketUtc = now;
+        ActiveAdapterName = AdapterName(pcap);
         _onPayload(payload, incoming);
     }
 
-    /// <summary>
-    /// В режиме «Авто» открыты все адаптеры, но обрабатываем пакеты только одного — того, на котором
-    /// идёт трафик от сервера игры. Иначе при VPN/ExitLag одни и те же пакеты пришли бы дважды.
-    /// Если выбранный адаптер замолчал, а на другом идёт игра, — переключаемся.
-    /// </summary>
-    private bool AcceptAdapter(Pcap pcap, bool incoming)
+    /// <summary>Решает, игровой ли это поток на нестандартных портах, по содержимому первых пакетов.</summary>
+    private static bool TryClassifyCustomFlow(Flow flow, ReadOnlySpan<byte> payload, ushort sourcePort, ushort destinationPort, AdapterStats stats)
     {
-        if (!_stats.TryGetValue(pcap, out var stats))
+        if (flow.IsIgnored)
         {
-            stats = new AdapterStats();
-            _stats[pcap] = stats;
+            return false;
         }
 
-        if (incoming)
+        if (flow.IsGame)
         {
-            stats.IncomingInWindow++;
-            stats.LastIncomingUtc = DateTime.UtcNow;
+            return true;
         }
 
-        if (_activePcap is null)
+        var probe = PhotonProbe.Inspect(payload);
+        if (probe == PhotonProbeResult.NotPhoton)
         {
-            if (!incoming)
+            flow.NonPhotonPackets++;
+            if (flow.NonPhotonPackets >= NonPhotonPacketsToIgnoreFlow && flow.PhotonPackets == 0)
             {
-                return false;
+                flow.IsIgnored = true;
             }
 
-            SetActive(pcap);
+            return false;
         }
 
-        return ReferenceEquals(_activePcap, pcap);
+        flow.PhotonPackets++;
+        stats.PhotonPackets++;
+        if (probe == PhotonProbeResult.FromServer)
+        {
+            flow.ServerPort = sourcePort;
+        }
+        else if (probe == PhotonProbeResult.FromClient)
+        {
+            flow.ServerPort = destinationPort;
+        }
+
+        return flow.IsGame;
     }
 
-    private void EvaluateAdapters()
+    /// <summary>
+    /// Раз в несколько секунд: включаем поиск по содержимому, если на стандартных портах тишина,
+    /// и возвращаемся к экономному фильтру, если игра снова идёт по стандартным портам.
+    /// </summary>
+    private void Evaluate()
     {
         var now = DateTime.UtcNow;
         if (now < _nextEvaluationUtc)
@@ -335,32 +409,72 @@ public sealed class NpcapCapture : IDisposable
             return;
         }
 
-        _nextEvaluationUtc = now + AdapterEvaluationInterval;
+        _nextEvaluationUtc = now + EvaluationInterval;
 
-        if (_activePcap is not null && _stats.TryGetValue(_activePcap, out var active))
+        foreach (var expired in _flows.Where(x => now - x.Value.LastSeenUtc > FlowIdleTimeout).Select(x => x.Key).ToList())
         {
-            var best = _stats.Where(x => !ReferenceEquals(x.Key, _activePcap)).MaxBy(x => x.Value.IncomingInWindow);
-            if (active.IncomingInWindow == 0 && best.Value is { IncomingInWindow: > 0 })
-            {
-                SetActive(best.Key);
-            }
-            else if (now - active.LastIncomingUtc > AdapterIdleTimeout)
-            {
-                _activePcap = null;
-                ActiveAdapterName = string.Empty;
-            }
+            _flows.Remove(expired);
         }
 
-        foreach (var stats in _stats.Values)
+        var silent = now - LastGamePacketUtc > DiscoveryDelay && now - _startedUtc > DiscoveryDelay;
+        if (!IsDiscoveryMode && silent)
         {
-            stats.IncomingInWindow = 0;
+            SetFilter(DiscoveryFilter, discovery: true);
+        }
+        else if (IsDiscoveryMode && !IsCustomPortDetected && now - LastGamePacketUtc < TimeSpan.FromSeconds(5)
+                 && now - _lastCustomPortGameUtc > TimeSpan.FromMinutes(2))
+        {
+            // игра идёт по стандартным портам — фильтр в драйвере снова отсекает лишнее
+            SetFilter(PortsFilter, discovery: false);
         }
     }
 
-    private void SetActive(Pcap pcap)
+    private void SetFilter(string filter, bool discovery)
     {
-        _activePcap = pcap;
-        ActiveAdapterName = pcap is DevicePcap device ? device.Device.Description ?? device.Device.Name : pcap.Name;
+        try
+        {
+            if (_dispatcher != null)
+            {
+                _dispatcher.Filter = filter;
+                IsDiscoveryMode = discovery;
+            }
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+        }
+    }
+
+    private AdapterStats GetStats(Pcap pcap)
+    {
+        if (!_stats.TryGetValue(pcap, out var stats))
+        {
+            stats = new AdapterStats { Name = AdapterName(pcap) };
+            lock (_stats)
+            {
+                _stats[pcap] = stats;
+            }
+        }
+
+        return stats;
+    }
+
+    private static string AdapterName(Pcap pcap)
+    {
+        return pcap is DevicePcap device ? device.Device.Description ?? device.Device.Name : pcap.Name;
+    }
+
+    /// <summary>Сводка по адаптерам для диагностики: сколько UDP, сколько похожего на игру, сколько принято.</summary>
+    public IReadOnlyList<AdapterDiagnostics> GetDiagnostics()
+    {
+        lock (_stats)
+        {
+            return _stats.Values
+                .Select(x => new AdapterDiagnostics(x.Name, x.UdpPackets, x.PhotonPackets, x.GamePackets))
+                .OrderByDescending(x => x.GamePackets)
+                .ThenByDescending(x => x.UdpPackets)
+                .ToList();
+        }
     }
 
     private static List<(string Id, string Name)> GetFriendlyNames()
@@ -387,7 +501,26 @@ public sealed class NpcapCapture : IDisposable
 
     private sealed class AdapterStats
     {
-        public int IncomingInWindow;
-        public DateTime LastIncomingUtc;
+        public string Name = string.Empty;
+        public long UdpPackets;
+        public long PhotonPackets;
+        public long GamePackets;
+    }
+
+    private readonly record struct FlowKey(ushort Low, ushort High)
+    {
+        public static FlowKey Create(ushort a, ushort b) => a <= b ? new FlowKey(a, b) : new FlowKey(b, a);
+    }
+
+    private sealed class Flow
+    {
+        public DateTime LastSeenUtc;
+        public Pcap? Owner;
+        public DateTime OwnerLastSeenUtc;
+        public int PhotonPackets;
+        public int NonPhotonPackets;
+        public bool IsIgnored;
+        public ushort? ServerPort;
+        public bool IsGame => ServerPort != null && PhotonPackets >= PhotonPacketsToConfirmFlow;
     }
 }
