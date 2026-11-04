@@ -815,7 +815,6 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public string SelectedPlayerTitle => _selectedPlayer == null ? string.Empty : Loc.F("PlayerItems", _selectedPlayer.Player);
-    public string ComparisonSummary { get => _comparisonSummary; private set => Set(ref _comparisonSummary, value); }
 
     public ObservableCollection<PlayerComparison> ComparisonResults { get; } = new();
 
