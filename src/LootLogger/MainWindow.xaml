@@ -79,7 +79,10 @@
                         <CheckBox Content="{local:Tr OnlyParty}" IsChecked="{Binding OnlyParty}" Margin="0,0,16,6"
                                   ToolTip="{local:Tr OnlyPartyTip}" />
                         <CheckBox Content="{local:Tr PlayerLoot}" IsChecked="{Binding ShowPlayerLoot}" Margin="0,0,16,6" />
-                        <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,24,6" />
+                        <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,16,6" />
+                        <CheckBox Content="{local:Tr ShowMounts}" IsChecked="{Binding ShowMounts}" Margin="0,0,16,6" />
+                        <CheckBox Content="{local:Tr ShowConsumables}" IsChecked="{Binding ShowConsumables}" Margin="0,0,16,6" ToolTip="{local:Tr OtherItemsTip}" />
+                        <TextBlock Text="{local:Tr OtherItemsHint}" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,24,6" ToolTip="{local:Tr OtherItemsTip}" />
                         <Button Content="{local:Tr ExportCsv}" Command="{Binding ExportCsvCommand}" Margin="0,0,8,6" ToolTip="{local:Tr ExportCsvTip}" />
                         <Button Content="{local:Tr ImportLogs}" Command="{Binding ImportLogCommand}" Margin="0,0,8,6"
                                 ToolTip="{local:Tr ImportLogsTip}" />
@@ -115,7 +118,10 @@
                     <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <CheckBox Content="{local:Tr OnlyParty}" IsChecked="{Binding OnlyParty}" Margin="0,0,16,6" ToolTip="{local:Tr OnlyPartyTip}" />
                         <CheckBox Content="{local:Tr PlayerLoot}" IsChecked="{Binding ShowPlayerLoot}" Margin="0,0,16,6" />
-                        <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,24,6" />
+                        <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,16,6" />
+                        <CheckBox Content="{local:Tr ShowMounts}" IsChecked="{Binding ShowMounts}" Margin="0,0,16,6" />
+                        <CheckBox Content="{local:Tr ShowConsumables}" IsChecked="{Binding ShowConsumables}" Margin="0,0,16,6" ToolTip="{local:Tr OtherItemsTip}" />
+                        <TextBlock Text="{local:Tr OtherItemsHint}" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,24,6" ToolTip="{local:Tr OtherItemsTip}" />
                         <TextBlock Text="{local:Tr GuildFilter}" VerticalAlignment="Center" Margin="0,0,8,6" />
                         <ComboBox MinWidth="200" Margin="0,0,0,6" ItemsSource="{Binding Stats.Guilds}" SelectedItem="{Binding Stats.SelectedGuild}" DisplayMemberPath="Display" />
                     </WrapPanel>
@@ -265,10 +271,22 @@
                             <RowDefinition Height="3*" />
                         </Grid.RowDefinitions>
 
-                        <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                            <Button DockPanel.Dock="Right" Content="{local:Tr ExportReport}" Command="{Binding ExportComparisonCommand}" Margin="8,0,0,0" VerticalAlignment="Top" />
-                            <TextBlock Text="{Binding ComparisonSummary}" TextWrapping="Wrap" />
-                        </DockPanel>
+                        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                            <WrapPanel Margin="0,0,0,4">
+                                <CheckBox Content="{local:Tr OnlyParty}" IsChecked="{Binding OnlyParty}" Margin="0,0,16,6" ToolTip="{local:Tr OnlyPartyTip}" />
+                                <CheckBox Content="{local:Tr PlayerLoot}" IsChecked="{Binding ShowPlayerLoot}" Margin="0,0,16,6" />
+                                <CheckBox Content="{local:Tr MobLoot}" IsChecked="{Binding ShowMobLoot}" Margin="0,0,16,6" />
+                                <CheckBox Content="{local:Tr ShowMounts}" IsChecked="{Binding ShowMounts}" Margin="0,0,16,6" />
+                                <CheckBox Content="{local:Tr ShowConsumables}" IsChecked="{Binding ShowConsumables}" Margin="0,0,16,6" ToolTip="{local:Tr OtherItemsTip}" />
+                                <TextBlock Text="{local:Tr OtherItemsHint}" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,24,6" ToolTip="{local:Tr OtherItemsTip}" />
+                                <TextBlock Text="{local:Tr GuildFilter}" VerticalAlignment="Center" Margin="0,0,8,6" />
+                                <ComboBox MinWidth="180" Margin="0,0,0,6" ItemsSource="{Binding ComparisonGuilds}" SelectedItem="{Binding ComparisonGuild}" DisplayMemberPath="Display" />
+                            </WrapPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="{local:Tr ExportReport}" Command="{Binding ExportComparisonCommand}" Margin="8,0,0,0" VerticalAlignment="Top" />
+                                <TextBlock Text="{Binding ComparisonSummary}" TextWrapping="Wrap" />
+                            </DockPanel>
+                        </StackPanel>
 
                         <DataGrid Grid.Row="1" ItemsSource="{Binding ComparisonResults}" SelectedItem="{Binding SelectedPlayer}" SelectionMode="Single">
                             <DataGrid.Columns>

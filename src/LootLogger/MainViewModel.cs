@@ -38,6 +38,8 @@ public sealed class MainViewModel : ObservableObject
         _onlyParty = settings.OnlyParty;
         _showPlayerLoot = settings.ShowPlayerLoot;
         _showMobLoot = settings.ShowMobLoot;
+        _filter.ShowMounts = settings.ShowMounts;
+        _filter.ShowConsumables = settings.ShowConsumables;
         _chestTimesUtc = settings.ChestLogTimesUtc;
         _gameDirectory = settings.GameDirectory;
 
@@ -115,6 +117,10 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedPlayerTitle));
         OnPropertyChanged(nameof(SelectedLanguage));
         OnPropertyChanged(nameof(DiscordStatus));
+        if (_allComparisonResults.Count > 0)
+        {
+            UpdateComparisonGuilds();
+        }
 
         // строки таблиц пересоздаются — названия предметов и статусы берутся на новом языке
         EntriesView.Refresh();
@@ -223,7 +229,7 @@ public sealed class MainViewModel : ObservableObject
             if (Set(ref _onlyParty, value))
             {
                 _settings.OnlyParty = value;
-                RefreshFilter();
+                OnFiltersChanged();
             }
         }
     }
@@ -237,7 +243,7 @@ public sealed class MainViewModel : ObservableObject
             if (Set(ref _showPlayerLoot, value))
             {
                 _settings.ShowPlayerLoot = value;
-                RefreshFilter();
+                OnFiltersChanged();
             }
         }
     }
@@ -251,9 +257,57 @@ public sealed class MainViewModel : ObservableObject
             if (Set(ref _showMobLoot, value))
             {
                 _settings.ShowMobLoot = value;
-                RefreshFilter();
+                OnFiltersChanged();
             }
         }
+    }
+
+    private readonly LootFilter _filter = new();
+
+    public bool ShowMounts
+    {
+        get => _filter.ShowMounts;
+        set
+        {
+            if (_filter.ShowMounts != value)
+            {
+                _filter.ShowMounts = value;
+                _settings.ShowMounts = value;
+                OnPropertyChanged();
+                OnFiltersChanged();
+            }
+        }
+    }
+
+    public bool ShowConsumables
+    {
+        get => _filter.ShowConsumables;
+        set
+        {
+            if (_filter.ShowConsumables != value)
+            {
+                _filter.ShowConsumables = value;
+                _settings.ShowConsumables = value;
+                OnPropertyChanged();
+                OnFiltersChanged();
+            }
+        }
+    }
+
+    /// <summary>Фильтры общие для журнала, статистики и сверки: после изменения пересчитываем всё.</summary>
+    private void OnFiltersChanged()
+    {
+        RefreshFilter();
+        if (_lastComparison != null && !IsComparing)
+        {
+            _ = CompareAsync();
+        }
+    }
+
+    /// <summary>Стоимость стопки: из записи, а если тогда цена была неизвестна — по ценам, узнанным позже.</summary>
+    private long StackValue(LootEntry e)
+    {
+        return e.UnitValue > 0 ? e.TotalValue : _prices.GetUnitValue(e.ItemIndex) * e.Quantity;
     }
 
     private int _shownCount;
@@ -274,6 +328,11 @@ public sealed class MainViewModel : ObservableObject
         }
 
         if (e.IsFromMob ? !_showMobLoot : !_showPlayerLoot)
+        {
+            return false;
+        }
+
+        if (!_filter.IsVisible(e.Item, e.Item?.Category == Core.Game.ItemCategory.Other ? StackValue(e) : 0))
         {
             return false;
         }
@@ -1022,7 +1081,7 @@ public sealed class MainViewModel : ObservableObject
                 return Loc.T("CompareHint");
             }
 
-            var summary = Loc.F("CompareSummary", c.LootCount, c.ChestLines, c.NotDepositedValue);
+            var summary = Loc.F("CompareSummary", c.LootCount, c.ChestLines, ComparisonResults.Sum(x => x.NotDepositedValue));
             if (c.UnknownItems > 0)
             {
                 summary += "\n" + Loc.F("UnknownItems", c.UnknownItems, c.UnknownExamples);
@@ -1040,6 +1099,53 @@ public sealed class MainViewModel : ObservableObject
     public string SelectedPlayerTitle => _selectedPlayer == null ? string.Empty : Loc.F("PlayerItems", _selectedPlayer.Player);
 
     public ObservableCollection<PlayerComparison> ComparisonResults { get; } = new();
+
+    /// <summary>Все результаты последней сверки; в таблице — только выбранная гильдия.</summary>
+    private List<PlayerComparison> _allComparisonResults = new();
+
+    public ObservableCollection<GuildOption> ComparisonGuilds { get; } = new();
+
+    private GuildOption? _comparisonGuild;
+    public GuildOption? ComparisonGuild
+    {
+        get => _comparisonGuild;
+        set
+        {
+            if (value != null && Set(ref _comparisonGuild, value))
+            {
+                ApplyComparisonGuild();
+            }
+        }
+    }
+
+    private void ApplyComparisonGuild()
+    {
+        var key = _comparisonGuild?.Key;
+        var selectedName = _selectedPlayer?.Player;
+
+        ComparisonResults.Clear();
+        foreach (var player in _allComparisonResults.Where(p => StatsViewModel.MatchesGuild(key, p.Guild)))
+        {
+            ComparisonResults.Add(player);
+        }
+
+        SelectedPlayer = ComparisonResults.FirstOrDefault(p => string.Equals(p.Player, selectedName, StringComparison.OrdinalIgnoreCase))
+                         ?? ComparisonResults.FirstOrDefault();
+        OnPropertyChanged(nameof(ComparisonSummary));
+    }
+
+    private void UpdateComparisonGuilds()
+    {
+        var key = _comparisonGuild?.Key ?? StatsViewModel.AllGuilds;
+        ComparisonGuilds.Clear();
+        foreach (var option in StatsViewModel.BuildGuildOptions(_allComparisonResults.Select(p => p.Guild)))
+        {
+            ComparisonGuilds.Add(option);
+        }
+
+        _comparisonGuild = ComparisonGuilds.FirstOrDefault(g => g.Key == key) ?? ComparisonGuilds.FirstOrDefault();
+        OnPropertyChanged(nameof(ComparisonGuild));
+    }
 
     private PlayerComparison? _selectedPlayer;
     public PlayerComparison? SelectedPlayer
@@ -1150,6 +1256,12 @@ public sealed class MainViewModel : ObservableObject
             var text = ChestLogText;
             var utc = ChestTimesUtc;
             var items = _game.Items;
+            var filter = new LootFilter { ShowMounts = _filter.ShowMounts, ShowConsumables = _filter.ShowConsumables };
+            var prices = _prices;
+            var guildByPlayer = Entries
+                .Where(e => !string.IsNullOrEmpty(e.LootedByGuild))
+                .GroupBy(e => e.LootedBy, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().LootedByGuild, StringComparer.OrdinalIgnoreCase);
             List<KillEntry> kills;
             lock (_kills)
             {
@@ -1159,24 +1271,34 @@ public sealed class MainViewModel : ObservableObject
             var (parse, results) = await Task.Run(() =>
             {
                 var parsed = ChestLogParser.Parse(text, items, utc);
-                return (parsed, LootComparator.Compare(loot, parsed.Entries, kills));
+
+                // те же правила показа, что и для лута, иначе скрытые руны в сундуке выглядели бы как «сдано без лута»
+                var deposits = parsed.Entries
+                    .Where(d => d.Item == null || filter.IsVisible(d.Item, prices.GetUnitValue(d.Item.Index) * d.Quantity))
+                    .ToList();
+                return (parsed, LootComparator.Compare(loot, deposits, kills));
             });
+
+            // гильдия игрока, который только сдавал в сундук, берётся из любой его записи в журнале
+            foreach (var player in results.Where(p => string.IsNullOrEmpty(p.Guild)))
+            {
+                if (guildByPlayer.TryGetValue(player.Player, out var guild))
+                {
+                    player.Guild = guild;
+                }
+            }
 
             Stats.SetComparison(results);
             _statsDirty = true;
-            ComparisonResults.Clear();
-            foreach (var player in results)
-            {
-                ComparisonResults.Add(player);
-            }
-
-            SelectedPlayer = ComparisonResults.FirstOrDefault();
+            _allComparisonResults = results;
+            UpdateComparisonGuilds();
+            ApplyComparisonGuild();
 
             _comparisonError = string.Empty;
             _lastComparison = new ComparisonStats(
                 loot.Count,
                 parse.Entries.Count,
-                results.Sum(x => x.NotDepositedValue),
+                0,
                 parse.UnknownItems,
                 string.Join(", ", parse.UnknownItemNames.Take(3)),
                 parse.Entries.Count == 0 && !string.IsNullOrWhiteSpace(text));

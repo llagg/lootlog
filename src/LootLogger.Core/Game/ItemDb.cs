@@ -1,10 +1,26 @@
 namespace LootLogger.Core.Game;
 
+/// <summary>Категория предмета для фильтров показа (по слоту экипировки из файлов игры).</summary>
+public enum ItemCategory
+{
+    /// <summary>Руны, души, ресурсы, артефакты, инструменты для сбора и всё, что нельзя надеть.</summary>
+    Other = 0,
+
+    /// <summary>Оружие, офф-хенд, шлем, броня, ботинки, плащ, сумка.</summary>
+    Equipment = 1,
+
+    Mount = 2,
+
+    /// <summary>Зелья и еда.</summary>
+    Consumable = 3
+}
+
 public sealed class ItemInfo
 {
-    public ItemInfo(int index, string uniqueName, string nameRu, string nameEn)
+    public ItemInfo(int index, string uniqueName, string nameRu, string nameEn, ItemCategory category = ItemCategory.Other)
     {
         Index = index;
+        Category = category;
         UniqueName = uniqueName;
         NameRu = nameRu;
         NameEn = nameEn;
@@ -34,6 +50,7 @@ public sealed class ItemInfo
     public int Tier { get; }
     public int Enchantment { get; }
     public bool IsTrash { get; }
+    public ItemCategory Category { get; }
 
     /// <summary>Название для показа на выбранном языке с уровнем, например «Меч мастера (T6.1)».</summary>
     public string DisplayName => UseEnglish ? _displayEn : _displayRu;

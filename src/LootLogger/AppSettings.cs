@@ -32,6 +32,8 @@ public sealed class AppSettings
     public bool OnlyParty { get; set; }
     public bool ShowPlayerLoot { get; set; } = true;
     public bool ShowMobLoot { get; set; } = true;
+    public bool ShowMounts { get; set; }
+    public bool ShowConsumables { get; set; }
     public bool ChestLogTimesUtc { get; set; } = true;
     public double WindowWidth { get; set; } = 1280;
     public double WindowHeight { get; set; } = 760;

@@ -157,8 +157,7 @@ public sealed class StatsViewModel : ObservableObject
         var guildKey = _selectedGuild?.Key ?? AllGuilds;
 
         var byPlayer = entries
-            .Where(e => guildKey == AllGuilds
-                        || (guildKey == NoGuild ? string.IsNullOrEmpty(e.LootedByGuild) : string.Equals(e.LootedByGuild, guildKey, StringComparison.OrdinalIgnoreCase)))
+            .Where(e => MatchesGuild(guildKey, e.LootedByGuild))
             .GroupBy(e => e.LootedBy, StringComparer.OrdinalIgnoreCase)
             .Select(g => new
             {
@@ -290,23 +289,35 @@ public sealed class StatsViewModel : ObservableObject
         return sb.ToString().TrimEnd();
     }
 
-    private void UpdateGuilds(IReadOnlyList<LootEntry> entries)
+    /// <summary>Список для выбора гильдии: «Все», «Без гильдии» (если есть такие игроки) и гильдии по алфавиту.</summary>
+    public static List<GuildOption> BuildGuildOptions(IEnumerable<string> playerGuilds)
     {
-        var guilds = entries
-            .Select(e => e.LootedByGuild)
+        var all = playerGuilds.ToList();
+        var guilds = all
             .Where(g => !string.IsNullOrEmpty(g))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var hasNoGuild = entries.Any(e => string.IsNullOrEmpty(e.LootedByGuild));
 
-        var wanted = new List<GuildOption> { new(AllGuilds, Loc.T("AllGuilds")) };
-        if (hasNoGuild)
+        var options = new List<GuildOption> { new(AllGuilds, Loc.T("AllGuilds")) };
+        if (all.Any(string.IsNullOrEmpty))
         {
-            wanted.Add(new GuildOption(NoGuild, Loc.T("NoGuild")));
+            options.Add(new GuildOption(NoGuild, Loc.T("NoGuild")));
         }
 
-        wanted.AddRange(guilds.Select(g => new GuildOption(g, g)));
+        options.AddRange(guilds.Select(g => new GuildOption(g, g)));
+        return options;
+    }
+
+    public static bool MatchesGuild(string? key, string guild)
+    {
+        return key is null or AllGuilds
+               || (key == NoGuild ? string.IsNullOrEmpty(guild) : string.Equals(guild, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void UpdateGuilds(IReadOnlyList<LootEntry> entries)
+    {
+        var wanted = BuildGuildOptions(entries.Select(e => e.LootedByGuild));
 
         if (wanted.SequenceEqual(Guilds))
         {

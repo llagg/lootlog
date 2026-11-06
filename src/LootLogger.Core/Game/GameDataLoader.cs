@@ -57,7 +57,7 @@ public static class GameDataLoader
     public const string ProgressReadingItems = "LoadingItems";
     public const string ProgressReadingClusters = "LoadingClusters";
 
-    private const string CacheVersion = "v1";
+    private const string CacheVersion = "v2";
     private const string ItemPrefix = "@ITEMS_";
 
     private static readonly byte[] Key = [48, 239, 114, 71, 66, 242, 4, 50];
@@ -323,10 +323,10 @@ public static class GameDataLoader
         var journals = new List<string>();
         var index = 1;
 
-        ItemInfo Create(string uniqueName, string nameVariable)
+        ItemInfo Create(string uniqueName, string nameVariable, ItemCategory category = ItemCategory.Other)
         {
             var (ru, en) = names.TryGetValue(nameVariable, out var n) ? n : (string.Empty, string.Empty);
-            return new ItemInfo(index++, uniqueName, ru, en);
+            return new ItemInfo(index++, uniqueName, ru, en, category);
         }
 
         var root = xml.LastChild;
@@ -353,7 +353,8 @@ public static class GameDataLoader
                 nameVariable = ItemPrefix + uniqueName;
             }
 
-            items.Add(Create(uniqueName + suffix, nameVariable));
+            var category = DetectCategory(node, uniqueName);
+            items.Add(Create(uniqueName + suffix, nameVariable, category));
 
             if (node.Name == "journalitem")
             {
@@ -369,7 +370,7 @@ public static class GameDataLoader
             foreach (var child in enchantments.ChildNodes.OfType<XmlElement>())
             {
                 var level = child.Attributes["enchantmentlevel"]?.Value;
-                items.Add(Create(uniqueName + "@" + level, nameAttribute ?? ItemPrefix + uniqueName));
+                items.Add(Create(uniqueName + "@" + level, nameAttribute ?? ItemPrefix + uniqueName, category));
             }
         }
 
@@ -380,6 +381,35 @@ public static class GameDataLoader
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Категория по слоту, в который предмет надевается. Инструменты для сбора (кирки, серпы, удочки,
+    /// набор следопыта) тоже надеваются в слот оружия, но считаются «прочим».
+    /// </summary>
+    internal static ItemCategory DetectCategory(XmlNode node, string uniqueName)
+    {
+        var slot = node.Attributes?["slottype"]?.Value?.ToLowerInvariant();
+        var shopCategory = node.Attributes?["shopcategory"]?.Value?.ToLowerInvariant();
+
+        if (node.Name == "mount" || slot == "mount")
+        {
+            return ItemCategory.Mount;
+        }
+
+        if (slot is "potion" or "food")
+        {
+            return ItemCategory.Consumable;
+        }
+
+        if (shopCategory == "tools" || uniqueName.Contains("_TOOL_", StringComparison.OrdinalIgnoreCase))
+        {
+            return ItemCategory.Other;
+        }
+
+        return slot is "mainhand" or "offhand" or "head" or "armor" or "shoes" or "cape" or "bag"
+            ? ItemCategory.Equipment
+            : ItemCategory.Other;
     }
 
     private static Dictionary<string, string> ReadClusters(string worldBin)
@@ -442,9 +472,9 @@ public static class GameDataLoader
             while (reader.ReadLine() is { } line)
             {
                 var parts = line.Split('\t');
-                if (parts.Length >= 4 && int.TryParse(parts[0], out var index))
+                if (parts.Length >= 5 && int.TryParse(parts[0], out var index) && int.TryParse(parts[4], out var category))
                 {
-                    items.Add(new ItemInfo(index, parts[1], parts[2], parts[3]));
+                    items.Add(new ItemInfo(index, parts[1], parts[2], parts[3], (ItemCategory) category));
                 }
             }
 
@@ -503,7 +533,9 @@ public static class GameDataLoader
                 writer.Write('\t');
                 writer.Write(item.NameRu);
                 writer.Write('\t');
-                writer.WriteLine(item.NameEn);
+                writer.Write(item.NameEn);
+                writer.Write('\t');
+                writer.WriteLine((int) item.Category);
             }
         }
 
