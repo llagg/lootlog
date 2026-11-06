@@ -69,7 +69,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["AllGuilds"] = ("Все гильдии", "All guilds"),
         ["NoGuild"] = ("Без гильдии", "No guild"),
         ["GuildFilter"] = ("Гильдия:", "Guild:"),
-        ["Legend"] = ("Рамка по итогам сверки: зелёная — сдано, красная — не сдано, жёлтая — потеряно, фиолетовая — погиб с лутом.", "Frame after the chest check: green — deposited, red — not deposited, yellow — lost, purple — died with it."),
+        ["Legend"] = ("Рамка по итогам сверки: зелёная — сдано, голубая — сдал другой игрок, красная — не сдано, жёлтая — потеряно, фиолетовая — погиб с лутом.", "Frame after the chest check: green — deposited, blue — deposited by another player, red — not deposited, yellow — lost, purple — died with it."),
         ["IconsTitle"] = ("Иконки предметов", "Item icons"),
         ["IconsProgress"] = ("Скачано {0:N0} из {1:N0}. Загрузка идёт в фоне один раз, дальше иконки берутся с диска.", "Downloaded {0:N0} of {1:N0}. This happens once in the background; after that icons are read from disk."),
         ["IconsPaused"] = ("Сервер иконок недоступен, загрузка приостановлена ({0:N0} из {1:N0}). Вместо картинок показываются подписи; загрузка продолжится при следующем запуске.", "The icon server is unavailable, download paused ({0:N0} of {1:N0}). Labels are shown instead; it resumes on the next start."),
@@ -152,6 +152,13 @@ public sealed class Loc : INotifyPropertyChanged
         ["StatusLost"] = ("Потеряно (залутали с него)", "Lost (looted from them)"),
         ["StatusDied"] = ("Погиб с этим лутом (возможно, уничтожено)", "Died with this loot (possibly destroyed)"),
         ["ColDied"] = ("Погиб с лутом", "Died with"),
+        ["StatusByOther"] = ("Сдано другим игроком", "Deposited by another player"),
+        ["StatusByOtherNamed"] = ("Сдал другой игрок: {0}", "Deposited by {0}"),
+        ["StatusForOther"] = ("Сдал за другого игрока", "Deposited for another player"),
+        ["StatusForOtherNamed"] = ("Сдал за {0}", "Deposited for {0}"),
+        ["ColByOther"] = ("Сдал другой", "By other"),
+        ["ColByOtherTip"] = ("Лут не сдан самим игроком, но такой же предмет позже сдал другой игрок его гильдии (скорее всего, передали трейдом). Считается сданным.",
+            "Loot not deposited by the player, but the same item was later deposited by another player of their guild (most likely traded). Counted as deposited."),
         ["StatusExtra"] = ("Сдано, нет в журнале лута", "Deposited, not in loot log"),
         ["StatusBeforeLog"] = ("Сдано до начала журнала", "Deposited before the log started"),
 
@@ -298,12 +305,29 @@ public sealed class LootStatusConverter : IValueConverter
             LootStatus.Lost => "StatusLost",
             LootStatus.DiedWithLoot => "StatusDied",
             LootStatus.DepositedWithoutLoot => "StatusExtra",
+            LootStatus.DepositedByOther => "StatusByOther",
+            LootStatus.DepositedForOther => "StatusForOther",
             _ => "StatusBeforeLog"
         });
     }
 
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is LootStatus status ? Translate(status) : string.Empty;
+    /// <summary>Статус строки сверки с именем второго игрока («Сдал Коля», «Сдал за Васю»).</summary>
+    public static string Translate(ComparisonItem item)
+    {
+        return item.Status switch
+        {
+            LootStatus.DepositedByOther when item.OtherPlayer.Length > 0 => Loc.F("StatusByOtherNamed", item.OtherPlayer),
+            LootStatus.DepositedForOther when item.OtherPlayer.Length > 0 => Loc.F("StatusForOtherNamed", item.OtherPlayer),
+            _ => Translate(item.Status)
+        };
+    }
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
+    {
+        ComparisonItem item => Translate(item),
+        LootStatus status => Translate(status),
+        _ => string.Empty
+    };
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

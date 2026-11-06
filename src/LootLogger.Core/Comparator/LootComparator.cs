@@ -14,11 +14,20 @@ public enum LootStatus
     /// <summary>Залутал, но потом этот предмет залутали с него самого.</summary>
     Lost,
 
+    /// <summary>
+    /// Лут не сдан самим игроком, но такой же предмет позже сдал другой игрок той же гильдии
+    /// (скорее всего, через трейд). Считается сданным.
+    /// </summary>
+    DepositedByOther,
+
     /// <summary>Залутал и положил в сундук.</summary>
     Deposited,
 
     /// <summary>Положил в сундук, но в журнале лута такого нет (своё или лут не попал в журнал).</summary>
     DepositedWithoutLoot,
+
+    /// <summary>Положил в сундук предмет, который залутал другой игрок (пара к <see cref="DepositedByOther"/>).</summary>
+    DepositedForOther,
 
     /// <summary>Положил в сундук до начала журнала — к этой сверке не относится.</summary>
     BeforeLog
@@ -36,10 +45,16 @@ public sealed class ComparisonItem
     public LootStatus Status { get; init; }
     public required int Quantity { get; init; }
 
+    /// <summary>Второй игрок для «Сдано другим» / «Сдал за другого».</summary>
+    public string OtherPlayer { get; init; } = string.Empty;
+
     public DateTime? LootUtc => Loot?.UtcTime;
     public DateTime? DepositUtc => Deposit?.UtcTime;
     public string ItemName => Loot?.DisplayItemName ?? Deposit?.Item?.DisplayName ?? Deposit?.ItemName ?? string.Empty;
     public long Value => (Loot?.UnitValue ?? 0) * Quantity;
+
+    /// <summary>Засчитывается как сданное (самим игроком или за него).</summary>
+    public bool CountsAsDeposited => Status is LootStatus.Deposited or LootStatus.DepositedByOther;
     public string LootedFrom => Loot?.LootedFrom ?? string.Empty;
 }
 
@@ -52,6 +67,7 @@ public sealed class PlayerComparison
     /// <summary>Сколько записей лута (не штук) у игрока.</summary>
     public int LootedCount => Items.Where(x => x.Loot != null).Select(x => x.Loot).Distinct().Count();
     public int DepositedCount => Count(LootStatus.Deposited);
+    public int DepositedByOtherCount => Count(LootStatus.DepositedByOther);
     public int NotDepositedCount => Count(LootStatus.NotDeposited);
     public int LostCount => Count(LootStatus.Lost);
     public int DiedWithLootCount => Count(LootStatus.DiedWithLoot);
@@ -67,7 +83,7 @@ public sealed class PlayerComparison
     {
         get
         {
-            var counted = Items.Where(x => x.Loot != null && x.Status is LootStatus.Deposited or LootStatus.NotDeposited).ToList();
+            var counted = Items.Where(x => x.Loot != null && (x.CountsAsDeposited || x.Status == LootStatus.NotDeposited)).ToList();
             if (counted.Count == 0)
             {
                 return 100;
@@ -76,10 +92,10 @@ public sealed class PlayerComparison
             var totalValue = counted.Sum(x => x.Value);
             if (totalValue > 0)
             {
-                return 100.0 * counted.Where(x => x.Status == LootStatus.Deposited).Sum(x => x.Value) / totalValue;
+                return 100.0 * counted.Where(x => x.CountsAsDeposited).Sum(x => x.Value) / totalValue;
             }
 
-            return 100.0 * counted.Count(x => x.Status == LootStatus.Deposited) / counted.Count;
+            return 100.0 * counted.Count(x => x.CountsAsDeposited) / counted.Count;
         }
     }
 
@@ -97,18 +113,23 @@ public sealed class PlayerComparison
 /// </list>
 /// Всё считается поштучно, поэтому стопки сверяются по сумме, а одна запись лута с тела
 /// закрывает ровно столько штук, сколько с него забрали.
+///
+/// Вторым проходом сдачи, для которых у сдавшего нет своего лута, ищут не сданный лут
+/// другого игрока той же гильдии (предмет передали трейдом) — «Сдано другим игроком».
 /// </summary>
 public static class LootComparator
 {
     public static List<PlayerComparison> Compare(
         IReadOnlyCollection<LootEntry> loot,
         IReadOnlyCollection<ChestLogEntry> deposits,
-        IReadOnlyCollection<KillEntry>? kills = null)
+        IReadOnlyCollection<KillEntry>? kills = null,
+        IReadOnlyDictionary<string, string>? knownGuilds = null)
     {
         var players = new Dictionary<string, PlayerComparison>(StringComparer.OrdinalIgnoreCase);
         var holdings = new Dictionary<(string Player, int Item), List<Lot>>();
         var lots = new List<Lot>();
-        var extras = new List<ComparisonItem>();
+        var extras = new List<(ChestLogEntry Deposit, int Quantity, LootStatus Status)>();
+        var guilds = CollectGuilds(loot, knownGuilds);
 
         PlayerComparison GetPlayer(string name)
         {
@@ -200,18 +221,48 @@ public static class LootComparator
 
                     if (missing > 0)
                     {
-                        extras.Add(new ComparisonItem
-                        {
-                            Player = deposit.Player,
-                            Deposit = deposit,
-                            Quantity = missing,
-                            Status = deposit.UtcTime < firstLootUtc ? LootStatus.BeforeLog : LootStatus.DepositedWithoutLoot
-                        });
+                        extras.Add((deposit, missing, deposit.UtcTime < firstLootUtc ? LootStatus.BeforeLog : LootStatus.DepositedWithoutLoot));
                     }
 
                     break;
                 }
             }
+        }
+
+        // Второй проход: сдачи без своего лута ищут не сданный лут другого игрока той же гильдии.
+        var depositsForOthers = new List<(ChestLogEntry Deposit, int Quantity, string Owner)>();
+        for (var i = 0; i < extras.Count; i++)
+        {
+            var (deposit, missing, status) = extras[i];
+            if (status != LootStatus.DepositedWithoutLoot || deposit.Item == null)
+            {
+                continue;
+            }
+
+            var depositorGuild = guilds.GetValueOrDefault(deposit.Player, string.Empty);
+            var candidates = lots
+                .Where(x => x.Remaining > 0
+                            && x.Entry.ItemIndex == deposit.Item.Index
+                            && x.Entry.UtcTime < deposit.UtcTime
+                            && !string.Equals(x.Entry.LootedBy, deposit.Player, StringComparison.OrdinalIgnoreCase)
+                            && SameGuildOrUnknown(depositorGuild, guilds.GetValueOrDefault(x.Entry.LootedBy, string.Empty)))
+                .OrderByDescending(x => x.Entry.UtcTime)
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                continue;
+            }
+
+            // берём лут одного игрока — того, чей подходящий лут самый свежий
+            var owner = candidates[0].Entry.LootedBy;
+            var ownerLots = candidates.Where(x => string.Equals(x.Entry.LootedBy, owner, StringComparison.OrdinalIgnoreCase)).ToList();
+            var left = Take(ownerLots, missing, preferDied: false, (lot, n) => lot.OtherDeposits.Add((deposit, n, deposit.Player)));
+            if (left < missing)
+            {
+                depositsForOthers.Add((deposit, missing - left, owner));
+            }
+
+            extras[i] = (deposit, left, status);
         }
 
         foreach (var lot in lots)
@@ -220,6 +271,15 @@ public static class LootComparator
             foreach (var (deposit, quantity) in lot.Deposits)
             {
                 player.Items.Add(new ComparisonItem { Player = player.Player, Loot = lot.Entry, Deposit = deposit, Quantity = quantity, Status = LootStatus.Deposited });
+            }
+
+            foreach (var (deposit, quantity, depositor) in lot.OtherDeposits)
+            {
+                player.Items.Add(new ComparisonItem
+                {
+                    Player = player.Player, Loot = lot.Entry, Deposit = deposit, Quantity = quantity,
+                    Status = LootStatus.DepositedByOther, OtherPlayer = depositor
+                });
             }
 
             if (lot.Lost > 0)
@@ -239,9 +299,23 @@ public static class LootComparator
             }
         }
 
-        foreach (var extra in extras)
+        foreach (var (deposit, quantity, status) in extras.Where(x => x.Quantity > 0))
         {
-            GetPlayer(extra.Player).Items.Add(extra);
+            GetPlayer(deposit.Player).Items.Add(new ComparisonItem { Player = deposit.Player, Deposit = deposit, Quantity = quantity, Status = status });
+        }
+
+        foreach (var (deposit, quantity, owner) in depositsForOthers)
+        {
+            GetPlayer(deposit.Player).Items.Add(new ComparisonItem
+            {
+                Player = deposit.Player, Deposit = deposit, Quantity = quantity,
+                Status = LootStatus.DepositedForOther, OtherPlayer = owner
+            });
+        }
+
+        foreach (var player in players.Values.Where(p => string.IsNullOrEmpty(p.Guild)))
+        {
+            player.Guild = guilds.GetValueOrDefault(player.Player, string.Empty);
         }
 
         return players.Values
@@ -277,6 +351,40 @@ public static class LootComparator
         return quantity;
     }
 
+    /// <summary>Гильдии игроков: из журнала (кто лутал и у кого лутали) и из переданного списка.</summary>
+    private static Dictionary<string, string> CollectGuilds(IEnumerable<LootEntry> loot, IReadOnlyDictionary<string, string>? known)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in loot)
+        {
+            if (!string.IsNullOrEmpty(entry.LootedByGuild) && !string.IsNullOrEmpty(entry.LootedBy))
+            {
+                result.TryAdd(entry.LootedBy, entry.LootedByGuild);
+            }
+
+            if (!entry.IsFromMob && !string.IsNullOrEmpty(entry.LootedFromGuild) && !string.IsNullOrEmpty(entry.LootedFrom))
+            {
+                result.TryAdd(entry.LootedFrom, entry.LootedFromGuild);
+            }
+        }
+
+        foreach (var (player, guild) in known ?? new Dictionary<string, string>())
+        {
+            if (!string.IsNullOrEmpty(guild))
+            {
+                result.TryAdd(player, guild);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Разные гильдии — только если обе известны и не совпадают.</summary>
+    private static bool SameGuildOrUnknown(string a, string b)
+    {
+        return string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b) || string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class Lot
     {
         public Lot(LootEntry entry)
@@ -286,8 +394,9 @@ public static class LootComparator
 
         public LootEntry Entry { get; }
         public List<(ChestLogEntry Deposit, int Quantity)> Deposits { get; } = new();
+        public List<(ChestLogEntry Deposit, int Quantity, string Depositor)> OtherDeposits { get; } = new();
         public int Lost { get; set; }
         public bool Died { get; set; }
-        public int Remaining => Entry.Quantity - Lost - Deposits.Sum(x => x.Quantity);
+        public int Remaining => Entry.Quantity - Lost - Deposits.Sum(x => x.Quantity) - OtherDeposits.Sum(x => x.Quantity);
     }
 }

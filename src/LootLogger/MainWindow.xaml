@@ -22,6 +22,12 @@
                 <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DiedWithLoot}">
                     <Setter Property="Background" Value="#2E2540" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DepositedByOther}">
+                    <Setter Property="Background" Value="#1A2E45" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DepositedForOther}">
+                    <Setter Property="Background" Value="#1A2E45" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.Lost}">
                     <Setter Property="Background" Value="#3A3220" />
                 </DataTrigger>
@@ -191,6 +197,9 @@
                                                                     <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DiedWithLoot}">
                                                                         <Setter Property="BorderBrush" Value="#A78BFA" />
                                                                     </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.DepositedByOther}">
+                                                                        <Setter Property="BorderBrush" Value="#60A5FA" />
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Border.Style>
@@ -297,6 +306,11 @@
                                 <DataGridTextColumn Header="{local:Tr ColNotDeposited}" Width="70" Binding="{Binding NotDepositedCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColLost}" Width="70" Binding="{Binding LostCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColDied}" Width="95" Binding="{Binding DiedWithLootCount}" ElementStyle="{StaticResource RightCell}" />
+                                <DataGridTextColumn Width="85" Binding="{Binding DepositedByOtherCount}" ElementStyle="{StaticResource RightCell}">
+                                    <DataGridTextColumn.Header>
+                                        <TextBlock Text="{local:Tr ColByOther}" ToolTip="{local:Tr ColByOtherTip}" />
+                                    </DataGridTextColumn.Header>
+                                </DataGridTextColumn>
                                 <DataGridTextColumn Header="{local:Tr ColExtra}" Width="80" Binding="{Binding ExtraDepositCount}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColPercent}" Width="70" Binding="{Binding DepositedPercent, StringFormat=N0}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColNotDepositedValue}" Width="110" Binding="{Binding NotDepositedValue, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />
@@ -310,7 +324,7 @@
 
                         <DataGrid Grid.Row="3" ItemsSource="{Binding SelectedPlayerItems}" RowStyle="{StaticResource StatusRow}" RowBackground="{x:Null}" AlternatingRowBackground="{x:Null}">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="{local:Tr ColStatus}" Width="200" Binding="{Binding Status, Converter={x:Static local:LootStatusConverter.Instance}}" />
+                                <DataGridTextColumn Header="{local:Tr ColStatus}" Width="220" Binding="{Binding Converter={x:Static local:LootStatusConverter.Instance}}" />
                                 <DataGridTextColumn Header="{local:Tr ColItem}" Width="*" MinWidth="180" Binding="{Binding ItemName}" />
                                 <DataGridTextColumn Header="{local:Tr ColQty}" Width="60" Binding="{Binding Quantity}" ElementStyle="{StaticResource RightCell}" />
                                 <DataGridTextColumn Header="{local:Tr ColValue}" Width="100" Binding="{Binding Value, StringFormat=N0}" ElementStyle="{StaticResource ValueCell}" />

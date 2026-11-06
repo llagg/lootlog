@@ -1276,7 +1276,7 @@ public sealed class MainViewModel : ObservableObject
                 var deposits = parsed.Entries
                     .Where(d => d.Item == null || filter.IsVisible(d.Item, prices.GetUnitValue(d.Item.Index) * d.Quantity))
                     .ToList();
-                return (parsed, LootComparator.Compare(loot, deposits, kills));
+                return (parsed, LootComparator.Compare(loot, deposits, kills, guildByPlayer));
             });
 
             // гильдия игрока, который только сдавал в сундук, берётся из любой его записи в журнале
@@ -1346,7 +1346,7 @@ public sealed class MainViewModel : ObservableObject
                         Csv(SourceNameConverter.Translate(item.LootedFrom)),
                         item.LootUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? string.Empty,
                         item.DepositUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? string.Empty,
-                        Csv(LootStatusConverter.Translate(item.Status))));
+                        Csv(LootStatusConverter.Translate(item))));
                 }
             }
         }
