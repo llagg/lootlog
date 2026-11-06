@@ -75,6 +75,25 @@
             </StackPanel>
         </Border>
 
+        <!-- Подвал: контакт автора -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock Text="Discord:" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <Button Command="{Binding CopyAuthorDiscordCommand}" ToolTip="{local:Tr AuthorDiscordTip}" Cursor="Hand" Margin="0" Padding="0">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <TextBlock x:Name="Name" Text="{Binding AuthorDiscordLabel}" Foreground="#8EA1FF" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Name" Property="TextDecorations" Value="Underline" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
+        </Border>
+
         <TabControl Margin="10,8,10,10" SelectedIndex="{Binding SelectedTab}">
             <!-- ЖУРНАЛ -->
             <TabItem Header="{local:Tr TabJournal}">

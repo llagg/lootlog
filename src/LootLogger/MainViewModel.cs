@@ -78,6 +78,7 @@ public sealed class MainViewModel : ObservableObject
         OpenNpcapSiteCommand = new RelayCommand(() => OpenUrl("https://npcap.com/#download"));
         BrowseLogFolderCommand = new RelayCommand(BrowseLogFolder);
         CopyDiagnosticsCommand = new RelayCommand(CopyDiagnostics);
+        CopyAuthorDiscordCommand = new RelayCommand(CopyAuthorDiscord);
         SendToDiscordCommand = new RelayCommand(() => _ = SendToDiscordAsync(), () => !_isSendingToDiscord);
     }
 
@@ -1377,6 +1378,33 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenNpcapSiteCommand { get; }
     public RelayCommand BrowseLogFolderCommand { get; }
     public RelayCommand CopyDiagnosticsCommand { get; }
+    public RelayCommand CopyAuthorDiscordCommand { get; }
+
+    public const string AuthorDiscord = ".Exilexd";
+
+    private string _authorDiscordLabel = AuthorDiscord;
+    public string AuthorDiscordLabel { get => _authorDiscordLabel; private set => Set(ref _authorDiscordLabel, value); }
+
+    /// <summary>Discord открывает профиль только по числовому ID, поэтому по клику копируем ник.</summary>
+    private void CopyAuthorDiscord()
+    {
+        try
+        {
+            Clipboard.SetText(AuthorDiscord);
+            AuthorDiscordLabel = $"{AuthorDiscord} — {Loc.T("Copied")}";
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                AuthorDiscordLabel = AuthorDiscord;
+            };
+            timer.Start();
+        }
+        catch
+        {
+            // буфер обмена занят другим приложением — не страшно
+        }
+    }
     public RelayCommand SendToDiscordCommand { get; }
 
     private static void OpenUrl(string url)
