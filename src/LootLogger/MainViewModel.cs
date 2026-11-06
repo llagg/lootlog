@@ -79,6 +79,7 @@ public sealed class MainViewModel : ObservableObject
         BrowseLogFolderCommand = new RelayCommand(BrowseLogFolder);
         CopyDiagnosticsCommand = new RelayCommand(CopyDiagnostics);
         CopyAuthorDiscordCommand = new RelayCommand(CopyAuthorDiscord);
+        OpenAuthorDiscordCommand = new RelayCommand(() => OpenUrl(AuthorDiscordProfile));
         SendToDiscordCommand = new RelayCommand(() => _ = SendToDiscordAsync(), () => !_isSendingToDiscord);
     }
 
@@ -1083,6 +1084,12 @@ public sealed class MainViewModel : ObservableObject
             }
 
             var summary = Loc.F("CompareSummary", c.LootCount, c.ChestLines, ComparisonResults.Sum(x => x.NotDepositedValue));
+            var oldLines = ComparisonResults.Sum(x => x.OldDepositCount);
+            if (oldLines > 0)
+            {
+                summary += "\n" + Loc.F("CompareOldLines", oldLines);
+            }
+
             if (c.UnknownItems > 0)
             {
                 summary += "\n" + Loc.F("UnknownItems", c.UnknownItems, c.UnknownExamples);
@@ -1379,13 +1386,15 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand BrowseLogFolderCommand { get; }
     public RelayCommand CopyDiagnosticsCommand { get; }
     public RelayCommand CopyAuthorDiscordCommand { get; }
+    public RelayCommand OpenAuthorDiscordCommand { get; }
 
     public const string AuthorDiscord = ".Exilexd";
+    public const string AuthorDiscordProfile = "https://discord.com/users/181778893835862017";
 
     private string _authorDiscordLabel = AuthorDiscord;
     public string AuthorDiscordLabel { get => _authorDiscordLabel; private set => Set(ref _authorDiscordLabel, value); }
 
-    /// <summary>Discord открывает профиль только по числовому ID, поэтому по клику копируем ник.</summary>
+    /// <summary>Запасной вариант, если профиль по ссылке не открылся: ник в буфер обмена.</summary>
     private void CopyAuthorDiscord()
     {
         try

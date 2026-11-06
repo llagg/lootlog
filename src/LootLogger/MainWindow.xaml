@@ -31,6 +31,20 @@
                 <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.Lost}">
                     <Setter Property="Background" Value="#3A3220" />
                 </DataTrigger>
+                <!-- старые записи сундука: видны, но ни на что не влияют -->
+                <DataTrigger Binding="{Binding Status}" Value="{x:Static comparator:LootStatus.BeforeLog}">
+                    <Setter Property="Opacity" Value="0.45" />
+                    <Setter Property="ToolTip" Value="{local:Tr OldDepositTip}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PlayerRow" TargetType="DataGridRow">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasOnlyOldDeposits}" Value="True">
+                    <Setter Property="Opacity" Value="0.45" />
+                    <Setter Property="ToolTip" Value="{local:Tr OldPlayerTip}" />
+                </DataTrigger>
             </Style.Triggers>
         </Style>
     </Window.Resources>
@@ -79,7 +93,7 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBackground}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="14,5">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <TextBlock Text="Discord:" Style="{StaticResource Hint}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <Button Command="{Binding CopyAuthorDiscordCommand}" ToolTip="{local:Tr AuthorDiscordTip}" Cursor="Hand" Margin="0" Padding="0">
+                <Button Command="{Binding OpenAuthorDiscordCommand}" ToolTip="{local:Tr AuthorDiscordTip}" Cursor="Hand" Margin="0" Padding="0">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <TextBlock x:Name="Name" Text="{Binding AuthorDiscordLabel}" Foreground="#8EA1FF" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -91,6 +105,7 @@
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
+                <Button Content="{local:Tr CopyNick}" Command="{Binding CopyAuthorDiscordCommand}" Margin="10,0,0,0" Padding="8,1" FontSize="11" />
             </StackPanel>
         </Border>
 
@@ -316,7 +331,7 @@
                             </DockPanel>
                         </StackPanel>
 
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding ComparisonResults}" SelectedItem="{Binding SelectedPlayer}" SelectionMode="Single">
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding ComparisonResults}" SelectedItem="{Binding SelectedPlayer}" SelectionMode="Single" RowStyle="{StaticResource PlayerRow}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="{local:Tr ColPlayer}" Width="*" Binding="{Binding Player}" />
                                 <DataGridTextColumn Header="{local:Tr ColGuild}" Width="120" Binding="{Binding Guild}" ElementStyle="{StaticResource MutedCell}" />

@@ -72,6 +72,12 @@ public sealed class PlayerComparison
     public int LostCount => Count(LootStatus.Lost);
     public int DiedWithLootCount => Count(LootStatus.DiedWithLoot);
     public int ExtraDepositCount => Count(LootStatus.DepositedWithoutLoot);
+
+    /// <summary>Старые записи сундука (сданы раньше первого лута в журнале) — ни на что не влияют.</summary>
+    public int OldDepositCount => Count(LootStatus.BeforeLog);
+
+    /// <summary>У игрока только старые записи сундука — к этой сверке он не относится.</summary>
+    public bool HasOnlyOldDeposits => Items.Count > 0 && Items.All(x => x.Status == LootStatus.BeforeLog);
     public long LootedValue => Items.Where(x => x.Loot != null).Sum(x => x.Value);
     public long NotDepositedValue => Items.Where(x => x.Status == LootStatus.NotDeposited).Sum(x => x.Value);
 
@@ -319,7 +325,8 @@ public static class LootComparator
         }
 
         return players.Values
-            .OrderByDescending(x => x.NotDepositedValue)
+            .OrderBy(x => x.HasOnlyOldDeposits)
+            .ThenByDescending(x => x.NotDepositedValue)
             .ThenByDescending(x => x.NotDepositedCount)
             .ThenBy(x => x.Player, StringComparer.OrdinalIgnoreCase)
             .ToList();
