@@ -201,8 +201,6 @@ public sealed class Loc : INotifyPropertyChanged
         ["DiagRow"] = ("UDP {0,9:N0} · похоже на игру {1,7:N0} · принято {2,7:N0} · {3}", "UDP {0,9:N0} · game-like {1,7:N0} · accepted {2,7:N0} · {3}"),
         ["DiagFlows"] = ("Самые активные UDP-потоки (порты, пакетов, состояние, адаптер, первые байты):", "Most active UDP flows (ports, packets, state, adapter, first bytes):"),
         ["AuthorDiscordTip"] = ("Связь с автором: открыть профиль в Discord.", "Contact the author: open the Discord profile."),
-        ["CopyNick"] = ("Копировать ник", "Copy username"),
-        ["Copied"] = ("скопировано", "copied"),
         ["CopyDiagnostics"] = ("Копировать диагностику", "Copy diagnostics"),
         ["NoTrafficNow"] = ("Трафика игры сейчас нет", "No game traffic right now"),
         ["OpeningAdapters"] = ("Открываю сетевые адаптеры…", "Opening network adapters…"),

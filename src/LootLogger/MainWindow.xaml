@@ -96,7 +96,7 @@
                 <Button Command="{Binding OpenAuthorDiscordCommand}" ToolTip="{local:Tr AuthorDiscordTip}" Cursor="Hand" Margin="0" Padding="0">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <TextBlock x:Name="Name" Text="{Binding AuthorDiscordLabel}" Foreground="#8EA1FF" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock x:Name="Name" Text="{x:Static local:MainViewModel.AuthorDiscord}" Foreground="#8EA1FF" FontWeight="SemiBold" VerticalAlignment="Center" />
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="Name" Property="TextDecorations" Value="Underline" />
@@ -105,7 +105,6 @@
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
-                <Button Content="{local:Tr CopyNick}" Command="{Binding CopyAuthorDiscordCommand}" Margin="10,0,0,0" Padding="8,1" FontSize="11" />
             </StackPanel>
         </Border>
 
