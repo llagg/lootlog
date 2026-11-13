@@ -204,7 +204,7 @@ public sealed class MainViewModel : ObservableObject
 
     #region Журнал
 
-    public ObservableCollection<LootEntry> Entries { get; } = new();
+    public BulkObservableCollection<LootEntry> Entries { get; } = new();
     public ICollectionView EntriesView { get; }
 
     private string _searchText = string.Empty;
@@ -980,14 +980,8 @@ public sealed class MainViewModel : ObservableObject
 
         // импорт мог добавить старые записи — пересортируем журнал по времени
         var sorted = Entries.Concat(imported).OrderByDescending(x => x.UtcTime).ToList();
-        using (EntriesView.DeferRefresh())
-        {
-            Entries.Clear();
-            foreach (var entry in sorted)
-            {
-                Entries.Add(entry);
-            }
-        }
+        // одной заменой: таблица перерисуется один раз и не споткнётся о выделенную строку
+        Entries.ReplaceAll(sorted);
 
         RefreshFilter();
 
